@@ -14,7 +14,7 @@ A Discord bot that posts clickable Pokéballs at random times.
 	python main.py
 	```
 
-A Pokéball spawns every 2 to 4 minutes (`SPAWN_MIN_SECONDS` / `SPAWN_MAX_SECONDS`) in a random text channel the bot can post in. Set `ALLOWED_CHANNEL_IDS` (comma-separated) to limit which channels are used.
+A Pokéball spawns every 2 to 4 minutes (`SPAWN_MIN_SECONDS` / `SPAWN_MAX_SECONDS`) in a random text channel the bot can post in. Set `ALLOWED_CHANNEL_IDS` and/or `ALLOWED_CATEGORY_IDS` (comma-separated) to limit which channels are used.
 
 The first player to click a Pokéball turns it into a random Pokémon (official artwork from PokéAPI, saved in `assets/pokemon/` with names in `pokemon_names.json`), and the bot replies `You found PokémonName! @user`. Place the Pokéball image at `assets/pokeball.png` or set `POKEBALL_IMAGE_PATH`; without it, a small PokéAPI sprite is used.
 

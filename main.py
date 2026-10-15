@@ -17,6 +17,20 @@ RESERVE_MANAGER_ROLE = os.getenv("RESERVE_MANAGER_ROLE", "1532820386511720579").
 ALLOWED_CHANNEL_IDS = {
     int(value) for value in os.getenv("ALLOWED_CHANNEL_IDS", "").split(",") if value.strip()
 }
+ALLOWED_CATEGORY_IDS = {
+    int(value)
+    for value in os.getenv(
+        "ALLOWED_CATEGORY_IDS",
+        "1532135218792628315,1532137800974074077,1545882720935354418,1546208384385028146",
+    ).split(",")
+    if value.strip()
+}
+
+
+def is_allowed_channel(channel: discord.abc.GuildChannel) -> bool:
+    if not ALLOWED_CHANNEL_IDS and not ALLOWED_CATEGORY_IDS:
+        return True
+    return channel.id in ALLOWED_CHANNEL_IDS or channel.category_id in ALLOWED_CATEGORY_IDS
 POKEBALL_IMAGE_PATH = Path(os.getenv("POKEBALL_IMAGE_PATH", "assets/pokeball.png"))
 POKEBALL_FALLBACK_URL = (
     "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png"
@@ -89,7 +103,7 @@ class GardenBot(commands.Bot):
         channels = []
         for guild in self.guilds:
             for channel in guild.text_channels:
-                if ALLOWED_CHANNEL_IDS and channel.id not in ALLOWED_CHANNEL_IDS:
+                if not is_allowed_channel(channel):
                     continue
                 permissions = channel.permissions_for(guild.me)
                 if permissions.send_messages and permissions.embed_links:
@@ -126,7 +140,9 @@ bot = GardenBot()
 
 
 def can_use_test(ctx: commands.Context) -> bool:
-    if ALLOWED_CHANNEL_IDS and ctx.channel.id not in ALLOWED_CHANNEL_IDS:
+    if not isinstance(ctx.channel, discord.abc.GuildChannel) or not is_allowed_channel(
+        ctx.channel
+    ):
         return False
     if not isinstance(ctx.author, discord.Member):
         return False
