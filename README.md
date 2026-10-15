@@ -1,6 +1,6 @@
 # TheGarden
 
-A Discord bot that posts clickable Pokéballs while a Pokétwo incense is active.
+A Discord bot that posts clickable Pokéballs when Pokétwo spawns come in fast.
 
 ## Setup
 
@@ -14,6 +14,8 @@ A Discord bot that posts clickable Pokéballs while a Pokétwo incense is active
 	python main.py
 	```
 
-The bot watches public messages from Pokétwo (bot ID `716390085896962058`) for text containing `incense` and one of the start markers. It then posts in that channel at random intervals of 2 to 4 minutes. It stops when it sees a stop marker or after `INCENSE_DURATION_MINUTES` (60 by default). If Pokétwo uses different wording, adjust `INCENSE_START_MARKERS` or `INCENSE_STOP_MARKERS` in `.env` to match its public message text.
+The bot watches public Pokétwo spawn messages (bot ID `716390085896962058`). Once `POKEBALL_BURST_SPAWNS` (10 by default) spawns are seen within a minute, it posts a Pokéball every minute in a random channel that recently had spawns. It stops about 2 minutes after the spawns stop.
 
-When a player opens a Pokéball, the bot posts a random Pokémon image and announces `You found PokémonName @user`. The Pokéball image is optional; place the provided image at `assets/pokeball.png` or set `POKEBALL_IMAGE_PATH` to its location. Pokémon images are loaded from PokéAPI, so an OpenAI API key is not needed.
+The first player to click a Pokéball turns it into a random Pokémon (official artwork from PokéAPI, IDs listed in `pokemon_ids.json`), and the bot replies `You found PokémonName! @user`. Place the Pokéball image at `assets/pokeball.png` or set `POKEBALL_IMAGE_PATH`; without it, a small PokéAPI sprite is used.
+
+`v.test` posts a Pokéball in the current channel. It only works for members with the role named in `RESERVE_MANAGER_ROLE` (name or ID) and, if `ALLOWED_CHANNEL_IDS` is set, only in those channels.
