@@ -7,6 +7,29 @@ import discord
 MENTION_PATTERN = re.compile(r"<@!?\d+>")
 BODY_DIR = Path(__file__).parent / "assets" / "bodies"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+CATEGORIES = [
+    "Shape", "Eyes", "Brows", "Nose", "Mouth", "Hair", "Bangs", "Mark1", "Mark2",
+    "Facial Hair", "Shirt", "Sleeve", "Top", "Special", "Acc1", "Acc2", "Hat",
+]
+SELECTED_CATEGORY = "Shape"
+
+
+class CategoryButton(discord.ui.Button):
+    def __init__(self, name: str, row: int) -> None:
+        selected = name == SELECTED_CATEGORY
+        super().__init__(
+            label=name,
+            style=discord.ButtonStyle.primary if selected else discord.ButtonStyle.secondary,
+            row=row,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if self.label == SELECTED_CATEGORY:
+            await interaction.response.defer()
+        else:
+            await interaction.response.send_message(
+                f"{self.label} is not available yet.", ephemeral=True
+            )
 
 
 def natural_key(path: Path) -> list:
@@ -29,6 +52,8 @@ class BodyView(discord.ui.View):
         self.images = images
         self.index = 0
         self.message: discord.Message | None = None
+        for position, name in enumerate(CATEGORIES):
+            self.add_item(CategoryButton(name, row=1 + position // 5))
 
     def current(self) -> discord.File:
         path = self.images[self.index]
@@ -54,20 +79,22 @@ class BodyView(discord.ui.View):
         file = self.current()
         await interaction.response.edit_message(attachments=[file], view=self)
 
-    @discord.ui.button(emoji="⬅️", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(emoji="⬅️", style=discord.ButtonStyle.secondary, row=0)
     async def previous(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         self.index = (self.index - 1) % len(self.images)
         await self.show(interaction)
 
-    @discord.ui.button(label="Face 1", style=discord.ButtonStyle.primary, disabled=True)
+    @discord.ui.button(
+        label="Face 1", style=discord.ButtonStyle.secondary, disabled=True, row=0
+    )
     async def face(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         pass
 
-    @discord.ui.button(emoji="➡️", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(emoji="➡️", style=discord.ButtonStyle.secondary, row=0)
     async def next(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
