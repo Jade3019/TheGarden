@@ -13,6 +13,8 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 SPAWN_MIN_SECONDS = int(os.getenv("SPAWN_MIN_SECONDS", "120"))
 SPAWN_MAX_SECONDS = int(os.getenv("SPAWN_MAX_SECONDS", "240"))
+POKEBALL_LIFETIME_SECONDS = int(os.getenv("POKEBALL_LIFETIME_SECONDS", "10"))
+ACTIVITY_WINDOW_SECONDS = int(os.getenv("ACTIVITY_WINDOW_SECONDS", "120"))
 RESERVE_MANAGER_ROLE = os.getenv("RESERVE_MANAGER_ROLE", "1532820386511720579").strip()
 ALLOWED_CHANNEL_IDS = {
     int(value) for value in os.getenv("ALLOWED_CHANNEL_IDS", "").split(",") if value.strip()
@@ -53,9 +55,18 @@ intents.message_content = True
 
 class CatchView(discord.ui.View):
     def __init__(self, bot: "GardenBot") -> None:
-        super().__init__(timeout=600)
+        super().__init__(timeout=POKEBALL_LIFETIME_SECONDS)
         self.bot = bot
         self.caught = False
+        self.message: discord.Message | None = None
+
+    async def on_timeout(self) -> None:
+        if self.caught or self.message is None:
+            return
+        try:
+            await self.message.delete()
+        except discord.HTTPException:
+            pass
 
     @discord.ui.button(emoji="🔴", style=discord.ButtonStyle.secondary)
     async def open_pokeball(
@@ -91,6 +102,7 @@ class GardenBot(commands.Bot):
     def __init__(self) -> None:
         super().__init__(command_prefix="v.", intents=intents)
         self.next_ball_at = 0.0
+        self.last_activity: dict[int, float] = {}
 
     async def setup_hook(self) -> None:
         self.spawn_loop.start()
@@ -99,11 +111,13 @@ class GardenBot(commands.Bot):
         self.spawn_loop.cancel()
         await super().close()
 
-    def spawn_channels(self) -> list[discord.TextChannel]:
+    def spawn_channels(self, now: float) -> list[discord.TextChannel]:
         channels = []
         for guild in self.guilds:
             for channel in guild.text_channels:
                 if not is_allowed_channel(channel):
+                    continue
+                if now - self.last_activity.get(channel.id, -1e9) > ACTIVITY_WINDOW_SECONDS:
                     continue
                 permissions = channel.permissions_for(guild.me)
                 if permissions.send_messages and permissions.embed_links:
@@ -117,19 +131,25 @@ class GardenBot(commands.Bot):
             return
         self.next_ball_at = now + random.randint(SPAWN_MIN_SECONDS, SPAWN_MAX_SECONDS)
 
-        channels = self.spawn_channels()
+        channels = self.spawn_channels(now)
         if channels:
             await self.spawn_pokeball(random.choice(channels))
 
     async def spawn_pokeball(self, channel: discord.abc.Messageable) -> None:
         embed = discord.Embed()
+        view = CatchView(self)
         if POKEBALL_IMAGE_PATH.is_file():
             image = discord.File(POKEBALL_IMAGE_PATH, filename="pokeball.png")
             embed.set_image(url="attachment://pokeball.png")
-            await channel.send(embed=embed, file=image, view=CatchView(self))
+            view.message = await channel.send(embed=embed, file=image, view=view)
         else:
             embed.set_image(url=POKEBALL_FALLBACK_URL)
-            await channel.send(embed=embed, view=CatchView(self))
+            view.message = await channel.send(embed=embed, view=view)
+
+    async def on_message(self, message: discord.Message) -> None:
+        if not message.author.bot:
+            self.last_activity[message.channel.id] = time.monotonic()
+        await self.process_commands(message)
 
     @spawn_loop.before_loop
     async def before_spawn_loop(self) -> None:
