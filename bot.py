@@ -102,6 +102,46 @@ class BodyView(discord.ui.View):
         await self.show(interaction)
 
 
+COLOR_OPTIONS = [
+    "Skin Color", "Hair Color", "Eye Color", "Shirt Color",
+    "Accent Color", "Top Color", "Extra Color", "Hat Color",
+]
+
+
+class ColorButton(discord.ui.Button):
+    def __init__(self, name: str, row: int) -> None:
+        super().__init__(label=name, style=discord.ButtonStyle.success, row=row)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(
+            f"{self.label} is not available yet.", ephemeral=True
+        )
+
+
+class ColorView(discord.ui.View):
+    def __init__(self, owner_id: int) -> None:
+        super().__init__(timeout=600)
+        self.owner_id = owner_id
+        self.message: discord.Message | None = None
+        for position, name in enumerate(COLOR_OPTIONS):
+            self.add_item(ColorButton(name, row=position // 4))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This is not your farm.", ephemeral=True
+            )
+            return False
+        return True
+
+    async def on_timeout(self) -> None:
+        if self.message is not None:
+            try:
+                await self.message.edit(view=None)
+            except discord.HTTPException:
+                pass
+
+
 class StartView(discord.ui.View):
     def __init__(self, owner_id: int) -> None:
         super().__init__(timeout=60)
@@ -133,6 +173,9 @@ class StartView(discord.ui.View):
         view = BodyView(self.owner_id, images)
         file = view.current()
         view.message = await interaction.message.reply(file=file, view=view)
+
+        colors = ColorView(self.owner_id)
+        colors.message = await view.message.reply("Colors", view=colors)
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
     async def no(
