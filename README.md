@@ -18,4 +18,4 @@ The bot watches public Pokétwo spawn messages (bot ID `716390085896962058`). On
 
 The first player to click a Pokéball turns it into a random Pokémon (official artwork from PokéAPI, IDs listed in `pokemon_ids.json`), and the bot replies `You found PokémonName! @user`. Place the Pokéball image at `assets/pokeball.png` or set `POKEBALL_IMAGE_PATH`; without it, a small PokéAPI sprite is used.
 
-`v.test` posts a Pokéball in the current channel. It only works for members with the role named in `RESERVE_MANAGER_ROLE` (name or ID) and, if `ALLOWED_CHANNEL_IDS` is set, only in those channels.
+`v.test` posts a Pokéball in the current channel. It only works for members with the role listed in `RESERVE_MANAGER_ROLE` (comma-separated role names, role IDs or user IDs; default `1532820386511720579`) and, if `ALLOWED_CHANNEL_IDS` is set, only in those channels.

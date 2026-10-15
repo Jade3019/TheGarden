@@ -18,7 +18,7 @@ POKEBALL_BURST_SPAWNS = int(os.getenv("POKEBALL_BURST_SPAWNS", "10"))
 BURST_WINDOW_SECONDS = 60
 BURST_IDLE_SECONDS = 120
 POKEBALL_INTERVAL_SECONDS = 60
-RESERVE_MANAGER_ROLE = os.getenv("RESERVE_MANAGER_ROLE", "Reserve Manager").strip()
+RESERVE_MANAGER_ROLE = os.getenv("RESERVE_MANAGER_ROLE", "1532820386511720579").strip()
 ALLOWED_CHANNEL_IDS = {
     int(value) for value in os.getenv("ALLOWED_CHANNEL_IDS", "").split(",") if value.strip()
 }
@@ -187,9 +187,11 @@ def can_use_test(ctx: commands.Context) -> bool:
         return False
     if not isinstance(ctx.author, discord.Member):
         return False
-    wanted = RESERVE_MANAGER_ROLE.lower()
+    wanted = {value.strip().lower() for value in RESERVE_MANAGER_ROLE.split(",")}
+    if str(ctx.author.id) in wanted:
+        return True
     return any(
-        str(role.id) == wanted or role.name.lower() == wanted for role in ctx.author.roles
+        str(role.id) in wanted or role.name.lower() in wanted for role in ctx.author.roles
     )
 
 
@@ -203,6 +205,7 @@ async def test(ctx: commands.Context) -> None:
 async def test_error(ctx: commands.Context, error: commands.CommandError) -> None:
     if not isinstance(error, commands.CheckFailure):
         raise error
+    await ctx.send("You are not allowed to use v.test here.", delete_after=10)
 
 
 bot.run(DISCORD_TOKEN)
