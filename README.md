@@ -1,6 +1,6 @@
 # TheGarden
 
-A Discord bot that posts clickable Pokéballs when Pokétwo spawns come in fast.
+A Discord bot that posts clickable Pokéballs at random times.
 
 ## Setup
 
@@ -14,8 +14,8 @@ A Discord bot that posts clickable Pokéballs when Pokétwo spawns come in fast.
 	python main.py
 	```
 
-The bot watches public Pokétwo spawn messages (bot ID `716390085896962058`). Once `POKEBALL_BURST_SPAWNS` (10 by default) spawns are seen within a minute, it posts a Pokéball every minute in a random channel that recently had spawns. It stops about 2 minutes after the spawns stop.
+A Pokéball spawns every 2 to 4 minutes (`SPAWN_MIN_SECONDS` / `SPAWN_MAX_SECONDS`) in a random text channel the bot can post in. Set `ALLOWED_CHANNEL_IDS` (comma-separated) to limit which channels are used.
 
-The first player to click a Pokéball turns it into a random Pokémon (official artwork from PokéAPI, IDs listed in `pokemon_ids.json`), and the bot replies `You found PokémonName! @user`. Place the Pokéball image at `assets/pokeball.png` or set `POKEBALL_IMAGE_PATH`; without it, a small PokéAPI sprite is used.
+The first player to click a Pokéball turns it into a random Pokémon (official artwork from PokéAPI, saved in `assets/pokemon/` with names in `pokemon_names.json`), and the bot replies `You found PokémonName! @user`. Place the Pokéball image at `assets/pokeball.png` or set `POKEBALL_IMAGE_PATH`; without it, a small PokéAPI sprite is used.
 
 `v.test` posts a Pokéball in the current channel. It only works for members with the role listed in `RESERVE_MANAGER_ROLE` (comma-separated role names, role IDs or user IDs; default `1532820386511720579`) and, if `ALLOWED_CHANNEL_IDS` is set, only in those channels.
