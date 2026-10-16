@@ -30,6 +30,17 @@ HAIR_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "hair_colors.json").read_text()
 )
 BASE_HAIR_SHADES = [tuple(shade) for shade in HAIR_PALETTES[0]["shades"]]
+SHIRT_IMAGE = Path(__file__).parent / "assets" / "shirt" / "shirt.png"
+SHIRT_PALETTES = json.loads(
+    (Path(__file__).parent / "assets" / "shirt_colors.json").read_text()
+)
+BASE_SHIRT_SHADES = [tuple(shade) for shade in SHIRT_PALETTES[0]["shades"]]
+COLOR_STAGES = {"eye_color", "hair_color", "shirt_color"}
+COLOR_IMAGE_STAGES = {
+    "eye_color": "eyes",
+    "hair_color": "bangs",
+    "shirt_color": "shirt",
+}
 
 
 def read_progress(user_id: int) -> dict | None:
@@ -96,6 +107,29 @@ def recolor_mark_layer(
     return layer
 
 
+def recolor_shirt_layer(
+    path: Path,
+    color_id: int,
+    skin_shade_map: dict[tuple[int, int, int], tuple[int, int, int]],
+) -> Image.Image:
+    layer = Image.open(path).convert("RGBA")
+    target_shades = SHIRT_PALETTES[color_id - 1]["shades"]
+    shade_map = {
+        source: tuple(max(0, min(255, channel)) for channel in target)
+        for source, target in zip(BASE_SHIRT_SHADES, target_shades)
+    }
+    pixels = layer.load()
+    for y in range(layer.height):
+        for x in range(layer.width):
+            red, green, blue, alpha = pixels[x, y]
+            replacement = shade_map.get((red, green, blue)) or skin_shade_map.get(
+                (red, green, blue)
+            )
+            if replacement is not None:
+                pixels[x, y] = (*replacement, alpha)
+    return layer
+
+
 def render_eye_preview(
     skin_path: Path,
     eye_path: Path,
@@ -111,6 +145,8 @@ def render_eye_preview(
     mark1_bottom_path: Path | None = None,
     mark2_top_path: Path | None = None,
     mark2_bottom_path: Path | None = None,
+    shirt_path: Path | None = None,
+    shirt_color_id: int = 1,
 ) -> io.BytesIO:
     skin = Image.open(skin_path).convert("RGBA")
     eyes = Image.open(eye_path).convert("RGBA")
@@ -172,6 +208,10 @@ def render_eye_preview(
             if eye_pixel != reference_pixels[x, y]:
                 skin_pixels[x, y] = shade_map.get(eye_pixel, eye_pixel)
 
+    if shirt_path is not None:
+        shirt = recolor_shirt_layer(shirt_path, shirt_color_id, skin_shade_map)
+        shirt = shirt.resize(skin.size, Image.Resampling.NEAREST)
+        skin.alpha_composite(shirt)
     if brow_path is not None:
         brows = Image.open(brow_path).convert("RGBA")
         brows = brows.resize(skin.size, Image.Resampling.NEAREST)
@@ -356,6 +396,7 @@ class BodyView(discord.ui.View):
         self.selected_mark2_top_image: Path | None = None
         self.selected_mark2_bottom_image: Path | None = None
         self.hair_color_id = 1
+        self.shirt_color_id = 1
         self.eyes_button: CategoryButton | None = None
         self.brows_button: CategoryButton | None = None
         self.nose_button: CategoryButton | None = None
@@ -364,6 +405,7 @@ class BodyView(discord.ui.View):
         self.bangs_button: CategoryButton | None = None
         self.mark1_button: CategoryButton | None = None
         self.mark2_button: CategoryButton | None = None
+        self.shirt_button: CategoryButton | None = None
         self.shape_button = CategoryButton("Shape", row=1, stage="shape", selected=True)
         self.done_button = DoneButton("Shape Done", row=1)
         self.add_item(self.shape_button)
@@ -378,6 +420,7 @@ class BodyView(discord.ui.View):
         view.selected_face = saved.get("selected_face")
         view.eye_color_id = int(saved.get("eye_color_id", 1))
         view.hair_color_id = int(saved.get("hair_color_id", 1))
+        view.shirt_color_id = int(saved.get("shirt_color_id", 1))
         view.step_indices.update(
             {key: max(0, int(value)) for key, value in saved.get("step_indices", {}).items()}
         )
@@ -392,6 +435,7 @@ class BodyView(discord.ui.View):
             "bangs": load_bang_images,
             "mark1": load_mark_images,
             "mark2": load_mark_images,
+            "shirt": lambda: [SHIRT_IMAGE] if SHIRT_IMAGE.is_file() else [],
         }
         for step in saved.get("steps", []):
             if step in loaders:
@@ -400,9 +444,7 @@ class BodyView(discord.ui.View):
                     view.step_images[step] = images
 
         saved_stage = saved.get("stage", "shape")
-        image_stage = {"eye_color": "eyes", "hair_color": "bangs"}.get(
-            saved_stage, saved_stage
-        )
+        image_stage = COLOR_IMAGE_STAGES.get(saved_stage, saved_stage)
         if image_stage not in view.step_images:
             saved_stage = "shape"
             image_stage = "shape"
@@ -449,6 +491,7 @@ class BodyView(discord.ui.View):
             ("bangs", "Bangs"),
             ("mark1", "Mark1"),
             ("mark2", "Mark2"),
+            ("shirt", "Shirt"),
         ):
             if step in view.step_images:
                 button = CategoryButton(label, row=1, stage=step)
@@ -458,7 +501,7 @@ class BodyView(discord.ui.View):
         return view
 
     def save_progress(self) -> None:
-        if self.stage not in {"eye_color", "hair_color"}:
+        if self.stage not in COLOR_STAGES:
             self.step_indices[self.stage] = self.index
         if self.stage == "skin":
             self.selected_skin_image = self.images[self.index]
@@ -492,6 +535,7 @@ class BodyView(discord.ui.View):
                 "steps": list(self.step_images),
                 "eye_color_id": self.eye_color_id,
                 "hair_color_id": self.hair_color_id,
+                "shirt_color_id": self.shirt_color_id,
             },
         )
 
@@ -510,9 +554,13 @@ class BodyView(discord.ui.View):
             "hair_color": "Hair Color",
             "mark1": "Mark1",
             "mark2": "Mark2",
+            "shirt": "Shirt",
+            "shirt_color": "Shirt Color",
         }[self.stage]
         if self.stage == "eye_color":
             label_index = self.eye_color_id
+        elif self.stage == "shirt_color":
+            label_index = self.shirt_color_id
         elif self.stage == "hair_color":
             label_index = self.hair_color_id
         elif self.stage == "brows":
@@ -522,7 +570,7 @@ class BodyView(discord.ui.View):
         else:
             label_index = self.index + 1
         self.face.label = f"{kind} {label_index}"
-        if self.stage in {"eyes", "eye_color", "brows", "nose", "mouth", "hair", "bangs", "hair_color", "mark1", "mark2"} and self.selected_skin_image:
+        if self.stage in {"eyes", "eye_color", "brows", "nose", "mouth", "hair", "bangs", "hair_color", "mark1", "mark2", "shirt", "shirt_color"} and self.selected_skin_image:
             eye_path = path if self.stage == "eyes" else self.selected_eye_image
             brow_path = path if self.stage == "brows" else self.selected_brow_image
             nose_path = path if self.stage == "nose" else self.selected_nose_image
@@ -561,6 +609,8 @@ class BodyView(discord.ui.View):
                 mark1_bottom_path,
                 mark2_top_path,
                 mark2_bottom_path,
+                SHIRT_IMAGE if "shirt" in self.step_images else None,
+                self.shirt_color_id,
             )
             return discord.File(preview, filename="character.png")
         return discord.File(path, filename=f"body{path.suffix.lower()}")
@@ -596,6 +646,7 @@ class BodyView(discord.ui.View):
             "bangs": self.bangs_button,
             "mark1": self.mark1_button,
             "mark2": self.mark2_button,
+            "shirt": self.shirt_button,
         }
         for stage, button in category_buttons.items():
             if button is not None:
@@ -619,6 +670,8 @@ class BodyView(discord.ui.View):
             "hair_color": "Hair Color Done",
             "mark1": "Mark1 Done",
             "mark2": "Mark2 Done",
+            "shirt": "Shirt Done",
+            "shirt_color": "Shirt Color Done",
         }[self.stage]
 
     def add_step_button(self, button: CategoryButton) -> None:
@@ -650,10 +703,7 @@ class BodyView(discord.ui.View):
         stage: str,
         from_color_view: bool = False,
     ) -> None:
-        image_stage = {
-            "eye_color": "eyes",
-            "hair_color": "bangs",
-        }.get(stage, stage)
+        image_stage = COLOR_IMAGE_STAGES.get(stage, stage)
         images = self.step_images.get(image_stage, [])
         if not images:
             await interaction.response.send_message(
@@ -662,7 +712,7 @@ class BodyView(discord.ui.View):
             )
             return
 
-        if self.stage not in {"eye_color", "hair_color"}:
+        if self.stage not in COLOR_STAGES:
             self.step_indices[self.stage] = self.index
         if self.stage == "skin":
             self.selected_skin_image = self.images[self.index]
@@ -774,9 +824,11 @@ class BodyView(discord.ui.View):
         elif self.stage == "mark1":
             await self.finish_mark1(interaction)
         elif self.stage == "mark2":
-            await interaction.response.send_message(
-                "Your character is ready!", ephemeral=True
-            )
+            await self.finish_mark2(interaction)
+        elif self.stage == "shirt":
+            await self.select_stage(interaction, "shirt_color")
+        elif self.stage == "shirt_color":
+            await self.finish_shirt_color(interaction)
 
     async def finish_shape(self, interaction: discord.Interaction) -> None:
         face_name = self.images[self.index].stem
@@ -943,6 +995,38 @@ class BodyView(discord.ui.View):
         self.step_indices["mark1"] = self.index
         await self.select_stage(interaction, "mark2")
 
+    async def finish_mark2(self, interaction: discord.Interaction) -> None:
+        self.selected_mark2_top_image = self.images[self.index]
+        self.selected_mark2_bottom_image = MARKS_BOTTOM_DIR / self.images[self.index].name
+        self.step_indices["mark2"] = self.index
+        if not SHIRT_IMAGE.is_file():
+            await interaction.response.send_message(
+                "No shirt image found in assets/shirt.", ephemeral=True
+            )
+            return
+
+        self.step_images["shirt"] = [SHIRT_IMAGE]
+        self.step_indices["shirt"] = 0
+        if self.shirt_button is None:
+            self.shirt_button = CategoryButton("Shirt", row=1, stage="shirt")
+            self.add_step_button(self.shirt_button)
+        if self.colors is not None:
+            self.colors.add_shirt_color_button()
+        await self.select_stage(interaction, "shirt_color")
+
+    async def finish_shirt_color(self, interaction: discord.Interaction) -> None:
+        self.save_progress()
+        await interaction.response.edit_message(view=FinishView(self))
+        if self.colors is not None and self.colors.message is not None:
+            await self.colors.message.edit(view=None)
+
+    async def go_back(self, interaction: discord.Interaction) -> None:
+        self.update_stage_buttons()
+        await interaction.response.edit_message(view=self)
+        if self.colors is not None and self.colors.message is not None:
+            self.colors.update_stage_buttons(self.stage, self.step_images)
+            await self.colors.message.edit(view=self.colors)
+
     @discord.ui.button(emoji="⬅️", style=discord.ButtonStyle.secondary, row=0)
     async def previous(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -951,6 +1035,8 @@ class BodyView(discord.ui.View):
             self.eye_color_id = (self.eye_color_id - 2) % len(EYE_PALETTES) + 1
         elif self.stage == "hair_color":
             self.hair_color_id = (self.hair_color_id - 2) % len(HAIR_PALETTES) + 1
+        elif self.stage == "shirt_color":
+            self.shirt_color_id = (self.shirt_color_id - 2) % len(SHIRT_PALETTES) + 1
         else:
             self.index = (self.index - 1) % len(self.images)
         await self.show(interaction)
@@ -971,6 +1057,8 @@ class BodyView(discord.ui.View):
             self.eye_color_id = self.eye_color_id % len(EYE_PALETTES) + 1
         elif self.stage == "hair_color":
             self.hair_color_id = self.hair_color_id % len(HAIR_PALETTES) + 1
+        elif self.stage == "shirt_color":
+            self.shirt_color_id = self.shirt_color_id % len(SHIRT_PALETTES) + 1
         else:
             self.index = (self.index + 1) % len(self.images)
         await self.show(interaction)
@@ -1005,6 +1093,7 @@ class ColorView(discord.ui.View):
         self.skin_button = ColorButton("Skin Color", "skin", row=0)
         self.eye_color_button: ColorButton | None = None
         self.hair_color_button: ColorButton | None = None
+        self.shirt_color_button: ColorButton | None = None
         self.save_button = SaveProgressButton()
         self.skin_button.disabled = True
         self.add_item(self.skin_button)
@@ -1029,6 +1118,13 @@ class ColorView(discord.ui.View):
         self.hair_color_button.disabled = True
         self.add_before_save(self.hair_color_button)
 
+    def add_shirt_color_button(self) -> None:
+        if self.shirt_color_button is not None:
+            return
+        self.shirt_color_button = ColorButton("Shirt Color", "shirt_color", row=0)
+        self.shirt_color_button.disabled = True
+        self.add_before_save(self.shirt_color_button)
+
     def update_stage_buttons(
         self, selected_stage: str, available_images: dict[str, list[Path]]
     ) -> None:
@@ -1036,14 +1132,12 @@ class ColorView(discord.ui.View):
             "skin": self.skin_button,
             "eye_color": self.eye_color_button,
             "hair_color": self.hair_color_button,
+            "shirt_color": self.shirt_color_button,
         }
         for stage, button in buttons.items():
             if button is None:
                 continue
-            image_stage = {
-                "eye_color": "eyes",
-                "hair_color": "bangs",
-            }.get(stage, stage)
+            image_stage = COLOR_IMAGE_STAGES.get(stage, stage)
             available = bool(available_images.get(image_stage))
             button.disabled = not available
             button.style = (
@@ -1066,6 +1160,70 @@ class ColorView(discord.ui.View):
                 await self.message.edit(view=None)
             except discord.HTTPException:
                 pass
+
+
+class FinishView(discord.ui.View):
+    def __init__(self, body_view: BodyView) -> None:
+        super().__init__(timeout=600)
+        self.body_view = body_view
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.body_view.owner_id:
+            await interaction.response.send_message(
+                "This is not your farm.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="All Done", style=discord.ButtonStyle.success)
+    async def all_done(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await interaction.response.edit_message(
+            content="Are you sure you are all done?",
+            view=ConfirmDoneView(self.body_view),
+        )
+        self.stop()
+
+    @discord.ui.button(label="Go Back", style=discord.ButtonStyle.secondary)
+    async def go_back(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await self.body_view.go_back(interaction)
+        self.stop()
+
+
+class ConfirmDoneView(discord.ui.View):
+    def __init__(self, body_view: BodyView) -> None:
+        super().__init__(timeout=600)
+        self.body_view = body_view
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.body_view.owner_id:
+            await interaction.response.send_message(
+                "This is not your farm.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Yes", style=discord.ButtonStyle.success)
+    async def yes(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        self.body_view.save_progress()
+        await interaction.response.edit_message(
+            content="Your character is all done!", view=None
+        )
+        self.stop()
+
+    @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
+    async def no(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await interaction.response.edit_message(
+            content=None, view=FinishView(self.body_view)
+        )
+        self.stop()
 
 
 class ResumeView(discord.ui.View):
@@ -1102,6 +1260,8 @@ class ResumeView(discord.ui.View):
             colors.add_eye_color_button()
         if "bangs" in view.step_images:
             colors.add_hair_color_button()
+        if "shirt" in view.step_images:
+            colors.add_shirt_color_button()
         colors.update_stage_buttons(view.stage, view.step_images)
         colors.message = await view.message.reply("Colors", view=colors)
         view.colors = colors

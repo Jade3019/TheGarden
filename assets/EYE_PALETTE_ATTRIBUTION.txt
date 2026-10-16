@@ -22,3 +22,4 @@ Source files: top hair and thair bottom options 0, dreadlock fringe 1–2, thair
 
 
 These assets are used for non-commercial purposes with attribution. Adaptations must be shared under the same license. Do not use these assets or adaptations for commercial purposes.
+Shirt: clothing bottom/shirt 2.png (turtleneck); colors from shirtcol menu and shirtDict.
