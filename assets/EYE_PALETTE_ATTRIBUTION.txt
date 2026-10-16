@@ -7,6 +7,8 @@ Brow image layers are from the same creator and source:
 Source files: brow/0.png and brow/brow 1.png through brow/brow 8.png.
 Nose image layers are from the same creator and source:
 Source files: nose/0.png and nose/nose 1.png through nose/nose 13.png.
+Mouth image layers are from the same creator and source:
+Source files: mouth/0.png and mouth/mouth 1.png through mouth/mouth 11.png.
 Nose image layers are from the same creator and source:
 Source files: nose/0.png and nose/nose 1.png through nose/nose 13.png.
 
