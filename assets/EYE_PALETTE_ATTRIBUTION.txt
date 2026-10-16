@@ -5,6 +5,10 @@ License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
 
 Brow image layers are from the same creator and source:
 Source files: brow/0.png and brow/brow 1.png through brow/brow 8.png.
+Nose image layers are from the same creator and source:
+Source files: nose/0.png and nose/nose 1.png through nose/nose 13.png.
+Nose image layers are from the same creator and source:
+Source files: nose/0.png and nose/nose 1.png through nose/nose 13.png.
 
 
 These assets are used for non-commercial purposes with attribution. Adaptations must be shared under the same license. Do not use these assets or adaptations for commercial purposes.
