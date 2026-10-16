@@ -349,8 +349,6 @@ class BodyView(discord.ui.View):
         if self.brows_button is None:
             self.brows_button = CategoryButton("Brows", row=1, stage="brows")
             self.add_step_button(self.brows_button)
-        if self.colors is not None:
-            self.colors.add_brows_button()
         await self.select_stage(interaction, "brows")
 
     @discord.ui.button(emoji="⬅️", style=discord.ButtonStyle.secondary, row=0)
@@ -401,7 +399,6 @@ class ColorView(discord.ui.View):
         self.message: discord.Message | None = None
         self.skin_button = ColorButton("Skin Color", "skin", row=0)
         self.eye_color_button: ColorButton | None = None
-        self.brows_button: ColorButton | None = None
         self.skin_button.disabled = True
         self.add_item(self.skin_button)
 
@@ -412,20 +409,12 @@ class ColorView(discord.ui.View):
         self.eye_color_button.disabled = True
         self.add_item(self.eye_color_button)
 
-    def add_brows_button(self) -> None:
-        if self.brows_button is not None:
-            return
-        self.brows_button = ColorButton("Brows", "brows", row=0)
-        self.brows_button.disabled = True
-        self.add_item(self.brows_button)
-
     def update_stage_buttons(
         self, selected_stage: str, available_images: dict[str, list[Path]]
     ) -> None:
         buttons = {
             "skin": self.skin_button,
             "eye_color": self.eye_color_button,
-            "brows": self.brows_button,
         }
         for stage, button in buttons.items():
             if button is None:
