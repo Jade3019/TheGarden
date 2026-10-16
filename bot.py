@@ -1,14 +1,48 @@
 import asyncio
+import io
+import json
 import re
 from pathlib import Path
 
 import discord
+from PIL import Image
 
 MENTION_PATTERN = re.compile(r"<@!?\d+>")
 BODY_DIR = Path(__file__).parent / "assets" / "bodies"
 SKIN_DIR = Path(__file__).parent / "assets" / "skincolors"
 EYES_DIR = Path(__file__).parent / "assets" / "eyes"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+EYE_PALETTES = json.loads(
+    (Path(__file__).parent / "assets" / "eye_colors.json").read_text()
+)
+BASE_EYE_SHADES = [tuple(shade) + (255,) for shade in EYE_PALETTES[0]["shades"]]
+
+
+def render_eye_preview(skin_path: Path, eye_path: Path, color_id: int) -> io.BytesIO:
+    skin = Image.open(skin_path).convert("RGBA")
+    eyes = Image.open(eye_path).convert("RGBA")
+    if skin.size != eyes.size:
+        raise ValueError("Skin and eye images must have the same dimensions.")
+
+    target_shades = EYE_PALETTES[color_id - 1]["shades"]
+    shade_map = {
+        source: tuple(max(0, min(255, channel)) for channel in target) + (255,)
+        for source, target in zip(BASE_EYE_SHADES, target_shades)
+    }
+    skin_pixels = skin.load()
+    eye_pixels = eyes.load()
+    for y in range(skin.height):
+        for x in range(skin.width):
+            replacement = shade_map.get(eye_pixels[x, y])
+            if replacement is not None:
+                skin_pixels[x, y] = replacement
+
+    output = io.BytesIO()
+    skin.save(output, format="PNG")
+    output.seek(0)
+    return output
+
+
 class CategoryButton(discord.ui.Button):
     def __init__(self, name: str, row: int, selected: bool = False) -> None:
         super().__init__(
@@ -58,15 +92,14 @@ def load_skin_images(face_name: str) -> list[Path]:
     )
 
 
-def load_eye_images(skin_color_number: str) -> list[Path]:
+def load_eye_images() -> list[Path]:
     if not EYES_DIR.is_dir():
         return []
-    expected_suffix = f".eyeskin{skin_color_number}".lower()
     return sorted(
         (
             p
             for p in EYES_DIR.iterdir()
-            if re.fullmatch(rf"\d+{re.escape(expected_suffix)}", p.stem.lower())
+            if re.fullmatch(r"\d+\.eyeskin1", p.stem.lower())
             and p.suffix.lower() in IMAGE_SUFFIXES
         ),
         key=natural_key,
@@ -83,6 +116,8 @@ class BodyView(discord.ui.View):
         self.colors: "ColorView | None" = None
         self.stage = "shape"
         self.selected_face: str | None = None
+        self.selected_skin_image: Path | None = None
+        self.eye_color_id = 1
         self.eyes_button: CategoryButton | None = None
         self.shape_button = CategoryButton("Shape", row=1, selected=True)
         self.done_button = DoneButton("Shape Done", row=1)
@@ -91,8 +126,18 @@ class BodyView(discord.ui.View):
 
     def current(self) -> discord.File:
         path = self.images[self.index]
-        kind = {"shape": "Face", "skin": "Skin Color", "eyes": "Eyes"}[self.stage]
+        kind = {
+            "shape": "Face",
+            "skin": "Skin Color",
+            "eyes": "Eyes",
+            "eye_color": "Eyes",
+        }[self.stage]
         self.face.label = f"{kind} {self.index + 1}"
+        if self.stage in {"eyes", "eye_color"} and self.selected_skin_image:
+            preview = render_eye_preview(
+                self.selected_skin_image, path, self.eye_color_id
+            )
+            return discord.File(preview, filename="character.png")
         return discord.File(path, filename=f"body{path.suffix.lower()}")
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -120,6 +165,11 @@ class BodyView(discord.ui.View):
             return
         if self.stage == "eyes":
             await self.finish_eyes(interaction)
+            return
+        if self.stage == "eye_color":
+            await interaction.response.send_message(
+                "Your character is ready!", ephemeral=True
+            )
             return
         if self.stage != "shape":
             await interaction.response.send_message(
@@ -153,10 +203,8 @@ class BodyView(discord.ui.View):
 
     async def finish_skin(self, interaction: discord.Interaction) -> None:
         self.stage = "eyes"
-        selected_skin = self.images[self.index].stem
-        skin_match = re.search(r"\.skincolor(\d+)$", selected_skin, re.IGNORECASE)
-        skin_color_number = skin_match.group(1) if skin_match else "1"
-        eye_images = load_eye_images(skin_color_number)
+        self.selected_skin_image = self.images[self.index]
+        eye_images = load_eye_images()
 
         # Rebuild the row so the order is Shape, Eyes, Eyes Done.
         self.remove_item(self.done_button)
@@ -177,7 +225,7 @@ class BodyView(discord.ui.View):
             self.next.disabled = True
             await interaction.response.edit_message(view=self)
             await interaction.followup.send(
-                f"No eyeskin{skin_color_number} images found in assets/eyes yet.",
+                "No eye images found in assets/eyes yet.",
                 ephemeral=True,
             )
 
@@ -229,6 +277,13 @@ class ColorButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         if self.style == discord.ButtonStyle.primary:
+            if self.label == "Eye Color":
+                await interaction.response.send_message(
+                    "Choose an eye color:",
+                    view=EyePaletteView(self.view.owner_id, self.view.body_view),
+                    ephemeral=True,
+                )
+                return
             await interaction.response.defer()
         else:
             await interaction.response.send_message(
@@ -237,9 +292,10 @@ class ColorButton(discord.ui.Button):
 
 
 class ColorView(discord.ui.View):
-    def __init__(self, owner_id: int) -> None:
+    def __init__(self, owner_id: int, body_view: BodyView) -> None:
         super().__init__(timeout=600)
         self.owner_id = owner_id
+        self.body_view = body_view
         self.message: discord.Message | None = None
         self.skin_button = ColorButton("Skin Color", row=0)
         self.eye_color_button: ColorButton | None = None
@@ -266,6 +322,48 @@ class ColorView(discord.ui.View):
                 await self.message.edit(view=None)
             except discord.HTTPException:
                 pass
+
+
+class EyePaletteSelect(discord.ui.Select):
+    def __init__(self, body_view: BodyView) -> None:
+        self.body_view = body_view
+        options = [
+            discord.SelectOption(
+                label=palette["name"].title(),
+                value=str(palette["id"]),
+                description=palette["hex"],
+            )
+            for palette in EYE_PALETTES
+        ]
+        super().__init__(placeholder="Select an eye color", options=options)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        color_id = int(self.values[0])
+        self.body_view.eye_color_id = color_id
+        await interaction.response.defer(ephemeral=True)
+        if self.body_view.message is not None:
+            await self.body_view.message.edit(
+                attachments=[self.body_view.current()], view=self.body_view
+            )
+        palette = EYE_PALETTES[color_id - 1]
+        await interaction.followup.send(
+            f"Eye color set to {palette['name'].title()}.", ephemeral=True
+        )
+
+
+class EyePaletteView(discord.ui.View):
+    def __init__(self, owner_id: int, body_view: BodyView) -> None:
+        super().__init__(timeout=180)
+        self.owner_id = owner_id
+        self.add_item(EyePaletteSelect(body_view))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This color menu is not for you.", ephemeral=True
+            )
+            return False
+        return True
 
 
 class StartView(discord.ui.View):
@@ -304,7 +402,7 @@ class StartView(discord.ui.View):
             content=None, attachments=[file], view=view
         )
 
-        colors = ColorView(self.owner_id)
+        colors = ColorView(self.owner_id, view)
         colors.message = await view.message.reply("Colors", view=colors)
         view.colors = colors
 
