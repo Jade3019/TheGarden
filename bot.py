@@ -6,8 +6,7 @@ import re
 from pathlib import Path
 
 import discord
-from PIL import Image
-
+from PIL import Image, ImageDraw, ImageFont
 MENTION_PATTERN = re.compile(r"<@!?\d+>")
 BODY_DIR = Path(__file__).parent / "assets" / "bodies"
 SKIN_DIR = Path(__file__).parent / "assets" / "skincolors"
@@ -21,6 +20,17 @@ BANGS_BOTTOM_DIR = Path(__file__).parent / "assets" / "bangs" / "bottom"
 MARKS_TOP_DIR = Path(__file__).parent / "assets" / "marks" / "top"
 MARKS_BOTTOM_DIR = Path(__file__).parent / "assets" / "marks" / "bottom"
 PROGRESS_FILE = Path(__file__).parent / "data" / "farm_progress.json"
+FARMS_DIR = Path(__file__).parent / "assets" / "farms"
+FARMS = [
+    "Standard Farm",
+    "Riverland Farm",
+    "Forest Farm",
+    "Hill-top Farm",
+    "Wilderness Farm",
+    "Four Corners Farm",
+    "Beach Farm",
+    "Meadowlands Farm",
+]
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 EYE_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "eye_colors.json").read_text()
@@ -236,6 +246,39 @@ def render_eye_preview(
 
     output = io.BytesIO()
     skin.save(output, format="PNG")
+    output.seek(0)
+    return output
+
+
+def render_farm_picker() -> io.BytesIO:
+    # Left column holds farms 1-4, right column farms 5-8, name under each image.
+    cell, pad, label_height = 192, 24, 40
+    font = ImageFont.load_default(size=24)
+    width = pad + 2 * (cell + pad)
+    height = pad + 4 * (cell + label_height + pad)
+    sheet = Image.new("RGBA", (width, height), (47, 49, 54, 255))
+    draw = ImageDraw.Draw(sheet)
+    for index, name in enumerate(FARMS):
+        farm = Image.open(FARMS_DIR / f"{index + 1}.png").convert("RGBA")
+        scale = max(1, cell // max(farm.size))
+        farm = farm.resize(
+            (farm.width * scale, farm.height * scale), Image.Resampling.NEAREST
+        )
+        column, row = divmod(index, 4)
+        left = pad + column * (cell + pad)
+        top = pad + row * (cell + label_height + pad)
+        sheet.alpha_composite(
+            farm, (left + (cell - farm.width) // 2, top + (cell - farm.height) // 2)
+        )
+        text_width = draw.textlength(name, font=font)
+        draw.text(
+            (left + (cell - text_width) / 2, top + cell + 6),
+            name,
+            font=font,
+            fill=(255, 255, 255, 255),
+        )
+    output = io.BytesIO()
+    sheet.save(output, format="PNG")
     output.seek(0)
     return output
 
@@ -1227,12 +1270,28 @@ class ConfirmDoneView(discord.ui.View):
     ) -> None:
         self.body_view.save_progress()
         self.body_view.save_portrait()
+        write_progress(
+            self.body_view.owner_id,
+            {**read_progress(self.body_view.owner_id), "completed": True},
+        )
         await interaction.response.edit_message(
             content="You look amazing!", attachments=[], view=None
         )
         self.stop()
         await asyncio.sleep(3)
         await interaction.message.edit(content="Now it's time to choose your farm!")
+        await asyncio.sleep(3)
+        try:
+            picker = render_farm_picker()
+        except OSError:
+            await interaction.message.edit(
+                content="Farm images are missing in assets/farms."
+            )
+            return
+        await interaction.message.edit(
+            attachments=[discord.File(picker, filename="farms.png")],
+            view=FarmView(self.body_view.owner_id),
+        )
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
     async def no(
@@ -1242,6 +1301,34 @@ class ConfirmDoneView(discord.ui.View):
             content=None, view=FinishView(self.body_view)
         )
         self.stop()
+
+
+class FarmButton(discord.ui.Button):
+    def __init__(self, name: str, row: int) -> None:
+        super().__init__(label=name, style=discord.ButtonStyle.secondary, row=row)
+        self.farm_name = name
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(
+            f"You picked the {self.farm_name}.", ephemeral=True
+        )
+
+
+class FarmView(discord.ui.View):
+    def __init__(self, owner_id: int) -> None:
+        super().__init__(timeout=600)
+        self.owner_id = owner_id
+        for row in range(4):
+            self.add_item(FarmButton(FARMS[row], row))
+            self.add_item(FarmButton(FARMS[row + 4], row))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This is not your farm.", ephemeral=True
+            )
+            return False
+        return True
 
 
 class ResumeView(discord.ui.View):
@@ -1358,6 +1445,9 @@ class FarmBot(discord.Client):
         text = MENTION_PATTERN.sub("", message.content).strip().lower()
         if text == "start":
             saved = read_progress(message.author.id)
+            if saved is not None and saved.get("completed"):
+                await message.reply("You have already finished your character.")
+                return
             if saved is not None:
                 await message.reply(
                     "You have saved progress. Do you want to continue or start over?",
