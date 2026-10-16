@@ -22,6 +22,27 @@ EYE_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "eye_colors.json").read_text()
 )
 BASE_EYE_SHADES = [tuple(shade) + (255,) for shade in EYE_PALETTES[0]["shades"]]
+HAIR_PALETTES = json.loads(
+    (Path(__file__).parent / "assets" / "hair_colors.json").read_text()
+)
+BASE_HAIR_SHADES = [tuple(shade) for shade in HAIR_PALETTES[0]["shades"]]
+
+
+def recolor_hair_layer(path: Path, color_id: int) -> Image.Image:
+    layer = Image.open(path).convert("RGBA")
+    target_shades = HAIR_PALETTES[color_id - 1]["shades"]
+    shade_map = {
+        source: tuple(max(0, min(255, channel)) for channel in target) + (255,)
+        for source, target in zip(BASE_HAIR_SHADES, target_shades)
+    }
+    pixels = layer.load()
+    for y in range(layer.height):
+        for x in range(layer.width):
+            pixel = pixels[x, y]
+            replacement = shade_map.get(pixel[:3])
+            if replacement is not None:
+                pixels[x, y] = replacement[:3] + (pixel[3],)
+    return layer
 
 
 def render_eye_preview(
@@ -34,6 +55,7 @@ def render_eye_preview(
     hair_path: Path | None = None,
     bangs_top_path: Path | None = None,
     bangs_bottom_path: Path | None = None,
+    hair_color_id: int = 1,
 ) -> io.BytesIO:
     skin = Image.open(skin_path).convert("RGBA")
     back_layers = [layer for layer in (hair_path, bangs_bottom_path) if layer is not None]
@@ -47,7 +69,7 @@ def render_eye_preview(
                     body_pixels[x, y] = (255, 255, 255, 0)
         background = Image.new("RGBA", skin.size, (255, 255, 255, 255))
         for layer_path in back_layers:
-            layer = Image.open(layer_path).convert("RGBA")
+            layer = recolor_hair_layer(layer_path, hair_color_id)
             layer = layer.resize(skin.size, Image.Resampling.NEAREST)
             background.alpha_composite(layer)
         background.alpha_composite(body)
@@ -88,7 +110,7 @@ def render_eye_preview(
         mouth = mouth.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(mouth)
     if bangs_top_path is not None:
-        bangs_top = Image.open(bangs_top_path).convert("RGBA")
+        bangs_top = recolor_hair_layer(bangs_top_path, hair_color_id)
         bangs_top = bangs_top.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(bangs_top)
 
@@ -235,6 +257,7 @@ class BodyView(discord.ui.View):
         self.selected_hair_image: Path | None = None
         self.selected_bangs_top_image: Path | None = None
         self.selected_bangs_bottom_image: Path | None = None
+        self.hair_color_id = 1
         self.eyes_button: CategoryButton | None = None
         self.brows_button: CategoryButton | None = None
         self.nose_button: CategoryButton | None = None
@@ -258,9 +281,12 @@ class BodyView(discord.ui.View):
             "mouth": "Mouth",
             "hair": "Hair",
             "bangs": "Bangs",
+            "hair_color": "Hair Color",
         }[self.stage]
         if self.stage == "eye_color":
             label_index = self.eye_color_id
+        elif self.stage == "hair_color":
+            label_index = self.hair_color_id
         elif self.stage == "brows":
             label_index = self.index
         elif self.stage in {"nose", "mouth", "hair", "bangs"}:
@@ -268,7 +294,7 @@ class BodyView(discord.ui.View):
         else:
             label_index = self.index + 1
         self.face.label = f"{kind} {label_index}"
-        if self.stage in {"eyes", "eye_color", "brows", "nose", "mouth", "hair", "bangs"} and self.selected_skin_image:
+        if self.stage in {"eyes", "eye_color", "brows", "nose", "mouth", "hair", "bangs", "hair_color"} and self.selected_skin_image:
             eye_path = path if self.stage == "eyes" else self.selected_eye_image
             brow_path = path if self.stage == "brows" else self.selected_brow_image
             nose_path = path if self.stage == "nose" else self.selected_nose_image
@@ -290,6 +316,7 @@ class BodyView(discord.ui.View):
                 hair_path,
                 bangs_top_path,
                 bangs_bottom_path,
+                self.hair_color_id,
             )
             return discord.File(preview, filename="character.png")
         return discord.File(path, filename=f"body{path.suffix.lower()}")
@@ -310,7 +337,7 @@ class BodyView(discord.ui.View):
                 pass
 
     async def show(self, interaction: discord.Interaction) -> None:
-        if self.stage != "eye_color":
+        if self.stage not in {"eye_color", "hair_color"}:
             self.step_indices[self.stage] = self.index
         if self.stage == "skin":
             self.selected_skin_image = self.images[self.index]
@@ -359,6 +386,7 @@ class BodyView(discord.ui.View):
             "mouth": "Mouth Done",
             "hair": "Hair Done",
             "bangs": "Bangs Done",
+            "hair_color": "Hair Color Done",
         }[self.stage]
 
     def add_step_button(self, button: CategoryButton) -> None:
@@ -390,7 +418,10 @@ class BodyView(discord.ui.View):
         stage: str,
         from_color_view: bool = False,
     ) -> None:
-        image_stage = "eyes" if stage == "eye_color" else stage
+        image_stage = {
+            "eye_color": "eyes",
+            "hair_color": "bangs",
+        }.get(stage, stage)
         images = self.step_images.get(image_stage, [])
         if not images:
             await interaction.response.send_message(
@@ -399,7 +430,7 @@ class BodyView(discord.ui.View):
             )
             return
 
-        if self.stage != "eye_color":
+        if self.stage not in {"eye_color", "hair_color"}:
             self.step_indices[self.stage] = self.index
         if self.stage == "skin":
             self.selected_skin_image = self.images[self.index]
@@ -416,6 +447,13 @@ class BodyView(discord.ui.View):
         elif self.stage == "bangs":
             self.selected_bangs_top_image = self.images[self.index]
             self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / self.images[self.index].name
+        elif self.stage == "hair_color":
+            self.selected_bangs_top_image = self.step_images["bangs"][
+                self.step_indices.get("bangs", 0)
+            ]
+            self.selected_bangs_bottom_image = (
+                BANGS_BOTTOM_DIR / self.selected_bangs_top_image.name
+            )
 
         self.stage = stage
         self.images = images
@@ -435,6 +473,12 @@ class BodyView(discord.ui.View):
         elif stage == "hair":
             self.selected_hair_image = self.images[self.index]
         elif stage == "bangs":
+            self.selected_bangs_top_image = self.images[self.index]
+            self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / self.images[self.index].name
+        elif stage == "hair_color":
+            self.selected_hair_image = self.step_images["hair"][
+                self.step_indices.get("hair", 0)
+            ]
             self.selected_bangs_top_image = self.images[self.index]
             self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / self.images[self.index].name
         self.update_stage_buttons()
@@ -469,6 +513,8 @@ class BodyView(discord.ui.View):
         elif self.stage == "hair":
             await self.finish_hair(interaction)
         elif self.stage == "bangs":
+            await self.finish_bangs(interaction)
+        elif self.stage == "hair_color":
             await interaction.response.send_message(
                 "Your character is ready!", ephemeral=True
             )
@@ -597,12 +643,22 @@ class BodyView(discord.ui.View):
             self.add_step_button(self.bangs_button)
         await self.select_stage(interaction, "bangs")
 
+    async def finish_bangs(self, interaction: discord.Interaction) -> None:
+        self.selected_bangs_top_image = self.images[self.index]
+        self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / self.images[self.index].name
+        self.step_indices["bangs"] = self.index
+        if self.colors is not None:
+            self.colors.add_hair_color_button()
+        await self.select_stage(interaction, "hair_color")
+
     @discord.ui.button(emoji="⬅️", style=discord.ButtonStyle.secondary, row=0)
     async def previous(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         if self.stage == "eye_color":
             self.eye_color_id = (self.eye_color_id - 2) % len(EYE_PALETTES) + 1
+        elif self.stage == "hair_color":
+            self.hair_color_id = (self.hair_color_id - 2) % len(HAIR_PALETTES) + 1
         else:
             self.index = (self.index - 1) % len(self.images)
         await self.show(interaction)
@@ -621,6 +677,8 @@ class BodyView(discord.ui.View):
     ) -> None:
         if self.stage == "eye_color":
             self.eye_color_id = self.eye_color_id % len(EYE_PALETTES) + 1
+        elif self.stage == "hair_color":
+            self.hair_color_id = self.hair_color_id % len(HAIR_PALETTES) + 1
         else:
             self.index = (self.index + 1) % len(self.images)
         await self.show(interaction)
@@ -645,6 +703,7 @@ class ColorView(discord.ui.View):
         self.message: discord.Message | None = None
         self.skin_button = ColorButton("Skin Color", "skin", row=0)
         self.eye_color_button: ColorButton | None = None
+        self.hair_color_button: ColorButton | None = None
         self.skin_button.disabled = True
         self.add_item(self.skin_button)
 
@@ -655,17 +714,28 @@ class ColorView(discord.ui.View):
         self.eye_color_button.disabled = True
         self.add_item(self.eye_color_button)
 
+    def add_hair_color_button(self) -> None:
+        if self.hair_color_button is not None:
+            return
+        self.hair_color_button = ColorButton("Hair Color", "hair_color", row=0)
+        self.hair_color_button.disabled = True
+        self.add_item(self.hair_color_button)
+
     def update_stage_buttons(
         self, selected_stage: str, available_images: dict[str, list[Path]]
     ) -> None:
         buttons = {
             "skin": self.skin_button,
             "eye_color": self.eye_color_button,
+            "hair_color": self.hair_color_button,
         }
         for stage, button in buttons.items():
             if button is None:
                 continue
-            image_stage = "eyes" if stage == "eye_color" else stage
+            image_stage = {
+                "eye_color": "eyes",
+                "hair_color": "bangs",
+            }.get(stage, stage)
             available = bool(available_images.get(image_stage))
             button.disabled = not available
             button.style = (
