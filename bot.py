@@ -57,15 +57,15 @@ def load_skin_images(face_name: str) -> list[Path]:
     )
 
 
-def load_eye_images(face_name: str) -> list[Path]:
+def load_eye_images() -> list[Path]:
     if not EYES_DIR.is_dir():
         return []
-    expected_stem = f"{face_name}.eyeskin1".lower()
     return sorted(
         (
             p
             for p in EYES_DIR.iterdir()
-            if p.stem.lower() == expected_stem and p.suffix.lower() in IMAGE_SUFFIXES
+            if re.fullmatch(r"\d+\.eyeskin1", p.stem.lower())
+            and p.suffix.lower() in IMAGE_SUFFIXES
         ),
         key=natural_key,
     )
@@ -151,7 +151,7 @@ class BodyView(discord.ui.View):
 
     async def finish_skin(self, interaction: discord.Interaction) -> None:
         self.stage = "eyes"
-        eye_images = load_eye_images(self.selected_face or "")
+        eye_images = load_eye_images()
 
         # Rebuild the row so the order is Shape, Eyes, Eyes Done.
         self.remove_item(self.done_button)
@@ -172,7 +172,7 @@ class BodyView(discord.ui.View):
             self.next.disabled = True
             await interaction.response.edit_message(view=self)
             await interaction.followup.send(
-                f"No eye images for face {self.selected_face} yet.", ephemeral=True
+                "No eye images found in assets/eyes yet.", ephemeral=True
             )
 
         if self.colors is not None and self.colors.message is not None:
