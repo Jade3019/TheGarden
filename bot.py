@@ -96,6 +96,9 @@ class BodyView(discord.ui.View):
         await interaction.response.edit_message(attachments=[file], view=self)
 
     async def finish_step(self, interaction: discord.Interaction) -> None:
+        if self.stage == "skin":
+            await self.finish_skin(interaction)
+            return
         if self.stage != "shape":
             await interaction.response.send_message(
                 "The next step is not available yet.", ephemeral=True
@@ -123,6 +126,23 @@ class BodyView(discord.ui.View):
 
         if self.colors is not None and self.colors.message is not None:
             self.colors.skin_button.style = discord.ButtonStyle.primary
+            await self.colors.message.edit(view=self.colors)
+
+    async def finish_skin(self, interaction: discord.Interaction) -> None:
+        self.stage = "eyes"
+        self.previous.disabled = True
+        self.next.disabled = True
+
+        # Rebuild the row so the order is Shape, Eyes, Eyes Done.
+        self.remove_item(self.done_button)
+        self.add_item(CategoryButton("Eyes", row=1, selected=True))
+        self.done_button = DoneButton("Eyes Done", row=1)
+        self.add_item(self.done_button)
+        await interaction.response.edit_message(view=self)
+
+        if self.colors is not None and self.colors.message is not None:
+            self.colors.skin_button.style = discord.ButtonStyle.secondary
+            self.colors.skin_button.disabled = True
             await self.colors.message.edit(view=self.colors)
 
     @discord.ui.button(emoji="⬅️", style=discord.ButtonStyle.secondary, row=0)
