@@ -1552,7 +1552,7 @@ class FarmBot(discord.Client):
             return
         key = message.guild.id if message.guild else message.channel.id
         session = self.counting.get(key)
-        if session is not None and session["active"]:
+        if session is not None and session["active"] and len(message.content.split()) >= 4:
             counts = session["counts"]
             counts[message.author.id] = counts.get(message.author.id, 0) + 1
         await self.handle_farm_message(message)
