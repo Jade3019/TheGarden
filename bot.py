@@ -815,6 +815,15 @@ class ColorButton(discord.ui.Button):
         )
 
 
+class SaveProgressButton(discord.ui.Button):
+    def __init__(self) -> None:
+        super().__init__(label="Save", style=discord.ButtonStyle.danger, row=0)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        self.view.body_view.save_progress()
+        await interaction.response.send_message("Progress saved.", ephemeral=True)
+
+
 class ColorView(discord.ui.View):
     def __init__(self, owner_id: int, body_view: BodyView) -> None:
         super().__init__(timeout=600)
@@ -824,6 +833,7 @@ class ColorView(discord.ui.View):
         self.skin_button = ColorButton("Skin Color", "skin", row=0)
         self.eye_color_button: ColorButton | None = None
         self.hair_color_button: ColorButton | None = None
+        self.save_button: SaveProgressButton | None = None
         self.skin_button.disabled = True
         self.add_item(self.skin_button)
 
@@ -840,6 +850,8 @@ class ColorView(discord.ui.View):
         self.hair_color_button = ColorButton("Hair Color", "hair_color", row=0)
         self.hair_color_button.disabled = True
         self.add_item(self.hair_color_button)
+        self.save_button = SaveProgressButton()
+        self.add_item(self.save_button)
 
     def update_stage_buttons(
         self, selected_stage: str, available_images: dict[str, list[Path]]
