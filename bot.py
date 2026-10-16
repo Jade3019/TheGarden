@@ -1280,18 +1280,7 @@ class ConfirmDoneView(discord.ui.View):
         self.stop()
         await asyncio.sleep(3)
         await interaction.message.edit(content="Now it's time to choose your farm!")
-        await asyncio.sleep(3)
-        try:
-            picker = render_farm_picker()
-        except OSError:
-            await interaction.message.edit(
-                content="Farm images are missing in assets/farms."
-            )
-            return
-        await interaction.message.edit(
-            attachments=[discord.File(picker, filename="farms.png")],
-            view=FarmView(self.body_view.owner_id),
-        )
+        await show_farm_picker(interaction.message, self.body_view.owner_id)
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
     async def no(
@@ -1329,6 +1318,19 @@ class FarmView(discord.ui.View):
             )
             return False
         return True
+
+
+async def show_farm_picker(message: discord.Message, owner_id: int) -> None:
+    await asyncio.sleep(3)
+    try:
+        picker = render_farm_picker()
+    except OSError:
+        await message.edit(content="Farm images are missing in assets/farms.")
+        return
+    await message.edit(
+        attachments=[discord.File(picker, filename="farms.png")],
+        view=FarmView(owner_id),
+    )
 
 
 class ResumeView(discord.ui.View):
@@ -1443,6 +1445,11 @@ class FarmBot(discord.Client):
             return
 
         text = MENTION_PATTERN.sub("", message.content).strip().lower()
+        if text == "farm":
+            reply = await message.reply("Now it's time to choose your farm!")
+            await asyncio.sleep(3)
+            await show_farm_picker(reply, message.author.id)
+            return
         if text == "start":
             saved = read_progress(message.author.id)
             if saved is not None and saved.get("completed"):
