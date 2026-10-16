@@ -82,6 +82,20 @@ def recolor_hair_layer(path: Path, color_id: int) -> Image.Image:
     return layer
 
 
+def recolor_mark_layer(
+    path: Path, skin_shade_map: dict[tuple[int, int, int], tuple[int, int, int]]
+) -> Image.Image:
+    layer = Image.open(path).convert("RGBA")
+    pixels = layer.load()
+    for y in range(layer.height):
+        for x in range(layer.width):
+            red, green, blue, alpha = pixels[x, y]
+            replacement = skin_shade_map.get((red, green, blue))
+            if replacement is not None:
+                pixels[x, y] = (*replacement, alpha)
+    return layer
+
+
 def render_eye_preview(
     skin_path: Path,
     eye_path: Path,
@@ -99,6 +113,23 @@ def render_eye_preview(
     mark2_bottom_path: Path | None = None,
 ) -> io.BytesIO:
     skin = Image.open(skin_path).convert("RGBA")
+    eyes = Image.open(eye_path).convert("RGBA")
+    eye_match = re.fullmatch(r"(\d+)\.eyeskin1", eye_path.stem, re.IGNORECASE)
+    if eye_match is None:
+        raise ValueError(f"Unexpected eye asset name: {eye_path.name}")
+    skin_match = re.fullmatch(r"(\d+)\.skincolor\d+", skin_path.stem, re.IGNORECASE)
+    if skin_match is None:
+        raise ValueError(f"Unexpected skin asset name: {skin_path.name}")
+    eye_reference = Image.open(BODY_DIR / f"{eye_match.group(1)}.png").convert("RGBA")
+    skin_reference = Image.open(BODY_DIR / f"{skin_match.group(1)}.png").convert("RGBA")
+    if skin.size != eyes.size or eyes.size != eye_reference.size or skin.size != skin_reference.size:
+        raise ValueError("Skin, eye, and reference images must have the same dimensions.")
+
+    skin_shade_map: dict[tuple[int, int, int], tuple[int, int, int]] = {}
+    for source_pixel, target_pixel in zip(skin_reference.getdata(), skin.getdata()):
+        if source_pixel[3] and target_pixel[3] and source_pixel[:3] != target_pixel[:3]:
+            skin_shade_map[source_pixel[:3]] = target_pixel[:3]
+
     back_layers = [
         (layer, True)
         for layer in (hair_path, bangs_bottom_path)
@@ -121,21 +152,12 @@ def render_eye_preview(
             layer = (
                 recolor_hair_layer(layer_path, hair_color_id)
                 if is_hair
-                else Image.open(layer_path).convert("RGBA")
+                else recolor_mark_layer(layer_path, skin_shade_map)
             )
             layer = layer.resize(skin.size, Image.Resampling.NEAREST)
             background.alpha_composite(layer)
         background.alpha_composite(body)
         skin = background
-    eyes = Image.open(eye_path).convert("RGBA")
-    eye_match = re.fullmatch(r"(\d+)\.eyeskin1", eye_path.stem, re.IGNORECASE)
-    if eye_match is None:
-        raise ValueError(f"Unexpected eye asset name: {eye_path.name}")
-    reference_path = SKIN_DIR / f"{eye_match.group(1)}.skincolor1.png"
-    reference = Image.open(reference_path).convert("RGBA")
-    if skin.size != eyes.size or eyes.size != reference.size:
-        raise ValueError("Skin, eye, and reference images must have the same dimensions.")
-
     target_shades = EYE_PALETTES[color_id - 1]["shades"]
     shade_map = {
         source: tuple(max(0, min(255, channel)) for channel in target) + (255,)
@@ -143,7 +165,7 @@ def render_eye_preview(
     }
     skin_pixels = skin.load()
     eye_pixels = eyes.load()
-    reference_pixels = reference.load()
+    reference_pixels = eye_reference.load()
     for y in range(85, min(146, skin.height)):
         for x in range(skin.width):
             eye_pixel = eye_pixels[x, y]
@@ -168,7 +190,7 @@ def render_eye_preview(
         skin.alpha_composite(bangs_top)
     for mark_path in (mark1_top_path, mark2_top_path):
         if mark_path is not None:
-            mark = Image.open(mark_path).convert("RGBA")
+            mark = recolor_mark_layer(mark_path, skin_shade_map)
             mark = mark.resize(skin.size, Image.Resampling.NEAREST)
             skin.alpha_composite(mark)
 
