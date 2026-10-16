@@ -7,6 +7,7 @@ import discord
 MENTION_PATTERN = re.compile(r"<@!?\d+>")
 BODY_DIR = Path(__file__).parent / "assets" / "bodies"
 SKIN_DIR = Path(__file__).parent / "assets" / "skincolors"
+EYES_DIR = Path(__file__).parent / "assets" / "eyes"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 class CategoryButton(discord.ui.Button):
     def __init__(self, name: str, row: int, selected: bool = False) -> None:
@@ -56,6 +57,20 @@ def load_skin_images(face_name: str) -> list[Path]:
     )
 
 
+def load_eye_images(face_name: str) -> list[Path]:
+    if not EYES_DIR.is_dir():
+        return []
+    expected_stem = f"{face_name}.eyeskin1".lower()
+    return sorted(
+        (
+            p
+            for p in EYES_DIR.iterdir()
+            if p.stem.lower() == expected_stem and p.suffix.lower() in IMAGE_SUFFIXES
+        ),
+        key=natural_key,
+    )
+
+
 class BodyView(discord.ui.View):
     def __init__(self, owner_id: int, images: list[Path]) -> None:
         super().__init__(timeout=600)
@@ -65,6 +80,8 @@ class BodyView(discord.ui.View):
         self.message: discord.Message | None = None
         self.colors: "ColorView | None" = None
         self.stage = "shape"
+        self.selected_face: str | None = None
+        self.eyes_button: CategoryButton | None = None
         self.shape_button = CategoryButton("Shape", row=1, selected=True)
         self.done_button = DoneButton("Shape Done", row=1)
         self.add_item(self.shape_button)
@@ -72,7 +89,7 @@ class BodyView(discord.ui.View):
 
     def current(self) -> discord.File:
         path = self.images[self.index]
-        kind = "Face" if self.stage == "shape" else "Skin Color"
+        kind = {"shape": "Face", "skin": "Skin Color", "eyes": "Eyes"}[self.stage]
         self.face.label = f"{kind} {self.index + 1}"
         return discord.File(path, filename=f"body{path.suffix.lower()}")
 
@@ -99,6 +116,9 @@ class BodyView(discord.ui.View):
         if self.stage == "skin":
             await self.finish_skin(interaction)
             return
+        if self.stage == "eyes":
+            await self.finish_eyes(interaction)
+            return
         if self.stage != "shape":
             await interaction.response.send_message(
                 "The next step is not available yet.", ephemeral=True
@@ -107,6 +127,7 @@ class BodyView(discord.ui.View):
 
         self.stage = "skin"
         face_name = self.images[self.index].stem
+        self.selected_face = face_name
         skin_images = load_skin_images(face_name)
         self.shape_button.style = discord.ButtonStyle.secondary
         self.shape_button.disabled = True
@@ -130,19 +151,47 @@ class BodyView(discord.ui.View):
 
     async def finish_skin(self, interaction: discord.Interaction) -> None:
         self.stage = "eyes"
-        self.previous.disabled = True
-        self.next.disabled = True
+        eye_images = load_eye_images(self.selected_face or "")
 
         # Rebuild the row so the order is Shape, Eyes, Eyes Done.
         self.remove_item(self.done_button)
-        self.add_item(CategoryButton("Eyes", row=1, selected=True))
+        self.eyes_button = CategoryButton("Eyes", row=1, selected=True)
+        self.add_item(self.eyes_button)
         self.done_button = DoneButton("Eyes Done", row=1)
         self.add_item(self.done_button)
-        await interaction.response.edit_message(view=self)
+        if eye_images:
+            self.images = eye_images
+            self.index = 0
+            self.previous.disabled = False
+            self.next.disabled = False
+            await interaction.response.edit_message(
+                attachments=[self.current()], view=self
+            )
+        else:
+            self.previous.disabled = True
+            self.next.disabled = True
+            await interaction.response.edit_message(view=self)
+            await interaction.followup.send(
+                f"No eye images for face {self.selected_face} yet.", ephemeral=True
+            )
 
         if self.colors is not None and self.colors.message is not None:
             self.colors.skin_button.style = discord.ButtonStyle.secondary
             self.colors.skin_button.disabled = True
+            await self.colors.message.edit(view=self.colors)
+
+    async def finish_eyes(self, interaction: discord.Interaction) -> None:
+        self.stage = "eye_color"
+        self.previous.disabled = True
+        self.next.disabled = True
+        if self.eyes_button is not None:
+            self.eyes_button.style = discord.ButtonStyle.secondary
+            self.eyes_button.disabled = True
+        self.done_button.label = "Eye Color Done"
+        await interaction.response.edit_message(view=self)
+
+        if self.colors is not None and self.colors.message is not None:
+            self.colors.add_eye_color_button()
             await self.colors.message.edit(view=self.colors)
 
     @discord.ui.button(emoji="⬅️", style=discord.ButtonStyle.secondary, row=0)
@@ -187,7 +236,15 @@ class ColorView(discord.ui.View):
         self.owner_id = owner_id
         self.message: discord.Message | None = None
         self.skin_button = ColorButton("Skin Color", row=0)
+        self.eye_color_button: ColorButton | None = None
         self.add_item(self.skin_button)
+
+    def add_eye_color_button(self) -> None:
+        if self.eye_color_button is not None:
+            return
+        self.eye_color_button = ColorButton("Eye Color", row=0)
+        self.eye_color_button.style = discord.ButtonStyle.primary
+        self.add_item(self.eye_color_button)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.owner_id:
