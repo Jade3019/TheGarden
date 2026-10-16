@@ -1014,6 +1014,12 @@ class BodyView(discord.ui.View):
             self.colors.add_shirt_color_button()
         await self.select_stage(interaction, "shirt_color")
 
+    def save_portrait(self) -> None:
+        portrait = self.current().fp.getvalue()
+        path = PROGRESS_FILE.parent / "portraits" / f"{self.owner_id}.png"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(portrait)
+
     async def finish_shirt_color(self, interaction: discord.Interaction) -> None:
         self.save_progress()
         await interaction.response.edit_message(view=FinishView(self))
@@ -1217,10 +1223,13 @@ class ConfirmDoneView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         self.body_view.save_progress()
+        self.body_view.save_portrait()
         await interaction.response.edit_message(
-            content="Your character is all done!", view=None
+            content="You look amazing!", attachments=[], view=None
         )
         self.stop()
+        await asyncio.sleep(3)
+        await interaction.message.edit(content="Now it's time to choose your farm!")
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
     async def no(
