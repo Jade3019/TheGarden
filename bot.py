@@ -1018,14 +1018,20 @@ class BodyView(discord.ui.View):
         self.save_progress()
         await interaction.response.edit_message(view=FinishView(self))
         if self.colors is not None and self.colors.message is not None:
-            await self.colors.message.edit(view=None)
+            try:
+                await self.colors.message.delete()
+            except discord.HTTPException:
+                pass
+            self.colors.message = None
 
     async def go_back(self, interaction: discord.Interaction) -> None:
         self.update_stage_buttons()
         await interaction.response.edit_message(view=self)
-        if self.colors is not None and self.colors.message is not None:
+        if self.colors is not None:
             self.colors.update_stage_buttons(self.stage, self.step_images)
-            await self.colors.message.edit(view=self.colors)
+            self.colors.message = await interaction.message.reply(
+                "Colors", view=self.colors
+            )
 
     @discord.ui.button(emoji="⬅️", style=discord.ButtonStyle.secondary, row=0)
     async def previous(
