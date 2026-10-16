@@ -833,25 +833,29 @@ class ColorView(discord.ui.View):
         self.skin_button = ColorButton("Skin Color", "skin", row=0)
         self.eye_color_button: ColorButton | None = None
         self.hair_color_button: ColorButton | None = None
-        self.save_button: SaveProgressButton | None = None
+        self.save_button = SaveProgressButton()
         self.skin_button.disabled = True
         self.add_item(self.skin_button)
+        self.add_item(self.save_button)
+
+    def add_before_save(self, button: discord.ui.Button) -> None:
+        self.remove_item(self.save_button)
+        self.add_item(button)
+        self.add_item(self.save_button)
 
     def add_eye_color_button(self) -> None:
         if self.eye_color_button is not None:
             return
         self.eye_color_button = ColorButton("Eye Color", "eye_color", row=0)
         self.eye_color_button.disabled = True
-        self.add_item(self.eye_color_button)
+        self.add_before_save(self.eye_color_button)
 
     def add_hair_color_button(self) -> None:
         if self.hair_color_button is not None:
             return
         self.hair_color_button = ColorButton("Hair Color", "hair_color", row=0)
         self.hair_color_button.disabled = True
-        self.add_item(self.hair_color_button)
-        self.save_button = SaveProgressButton()
-        self.add_item(self.save_button)
+        self.add_before_save(self.hair_color_button)
 
     def update_stage_buttons(
         self, selected_stage: str, available_images: dict[str, list[Path]]
