@@ -50,6 +50,19 @@ def write_progress(user_id: int, progress: dict) -> None:
     os.replace(temporary, PROGRESS_FILE)
 
 
+def delete_progress(user_id: int) -> None:
+    try:
+        data = json.loads(PROGRESS_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return
+    if str(user_id) not in data:
+        return
+    del data[str(user_id)]
+    temporary = PROGRESS_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(data, separators=(",", ":")))
+    os.replace(temporary, PROGRESS_FILE)
+
+
 def recolor_hair_layer(path: Path, color_id: int) -> Image.Image:
     layer = Image.open(path).convert("RGBA")
     target_shades = HAIR_PALETTES[color_id - 1]["shades"]
@@ -896,6 +909,55 @@ class ColorView(discord.ui.View):
                 pass
 
 
+class ResumeView(discord.ui.View):
+    def __init__(self, owner_id: int, saved_progress: dict) -> None:
+        super().__init__(timeout=60)
+        self.owner_id = owner_id
+        self.saved_progress = saved_progress
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This question is not for you.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Continue", style=discord.ButtonStyle.success)
+    async def continue_farm(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        view = BodyView.restore(self.owner_id, self.saved_progress)
+        if view is None:
+            await interaction.response.edit_message(
+                content="No body images found in assets/bodies.", view=None
+            )
+            return
+
+        view.message = interaction.message
+        await interaction.response.edit_message(
+            content=None, attachments=[view.current()], view=view
+        )
+        colors = ColorView(self.owner_id, view)
+        if "eyes" in view.step_images:
+            colors.add_eye_color_button()
+        if "bangs" in view.step_images:
+            colors.add_hair_color_button()
+        colors.update_stage_buttons(view.stage, view.step_images)
+        colors.message = await view.message.reply("Colors", view=colors)
+        view.colors = colors
+
+    @discord.ui.button(label="Start Over", style=discord.ButtonStyle.danger)
+    async def start_over(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        delete_progress(self.owner_id)
+        await interaction.response.edit_message(
+            content="Do you want to start your farm?", view=StartView(self.owner_id)
+        )
+        self.stop()
+
+
 class StartView(discord.ui.View):
     def __init__(self, owner_id: int) -> None:
         super().__init__(timeout=60)
@@ -960,19 +1022,11 @@ class FarmBot(discord.Client):
         if text == "start":
             saved = read_progress(message.author.id)
             if saved is not None:
-                view = BodyView.restore(message.author.id, saved)
-                if view is not None:
-                    view.message = await message.reply(file=view.current(), view=view)
-                    colors = ColorView(message.author.id, view)
-                    if "eyes" in view.step_images:
-                        colors.add_eye_color_button()
-                    if "bangs" in view.step_images:
-                        colors.add_hair_color_button()
-                    colors.update_stage_buttons(view.stage, view.step_images)
-                    colors.message = await view.message.reply("Colors", view=colors)
-                    view.colors = colors
-                    view.save_progress()
-                    return
+                await message.reply(
+                    "You have saved progress. Do you want to continue or start over?",
+                    view=ResumeView(message.author.id, saved),
+                )
+                return
             await message.reply(
                 "Do you want to start your farm?", view=StartView(message.author.id)
             )
