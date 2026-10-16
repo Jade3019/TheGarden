@@ -222,20 +222,24 @@ class StartView(discord.ui.View):
     async def yes(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        await interaction.response.edit_message(view=None)
-        reply = await interaction.message.reply("First we are going to make you!")
+        await interaction.response.edit_message(
+            content="First we are going to create your character!", view=None
+        )
         self.stop()
 
         await asyncio.sleep(3)
-        await reply.delete()
 
         images = load_body_images()
         if not images:
-            await interaction.message.reply("No body images found in assets/bodies.")
+            await interaction.message.edit(
+                content="No body images found in assets/bodies."
+            )
             return
         view = BodyView(self.owner_id, images)
         file = view.current()
-        view.message = await interaction.message.reply(file=file, view=view)
+        view.message = await interaction.message.edit(
+            content=None, attachments=[file], view=view
+        )
 
         colors = ColorView(self.owner_id)
         colors.message = await view.message.reply("Colors", view=colors)
