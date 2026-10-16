@@ -40,6 +40,10 @@ FARM_INFO = {
         "Fishing is 25% easier. Holding animals here is a bit difficult. "
         "If you reach level 10 on fishing, getting treasures is a bit easier."
     ),
+    "Forest Farm": (
+        "Possibility for random forages to be found. Finding wood here is easier. "
+        "Less stone drops here."
+    ),
 }
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 EYE_PALETTES = json.loads(
