@@ -15,6 +15,8 @@ Bottom-layer hairstyle images are from the same creator and source; top-hair/ban
 Source files: bottom layer hair/0.png, bhair 1.png through bhair 15.png, and bhair 17.png through bhair 30.png.
 Bangs layers are from the creator's top-hair set and its matching lower layers.
 Source values: 0, dreadlock fringe 1–2, thair 1–24, and thair natural 1–5 from `top hair/` and `thair bottom/`.
+Mark1 and Mark2 use the creator's shared facial-feature layers.
+Source values: 0, freckles, elf ears, light freckles, beauty mark 1–3, eyebags, nose scar, cheek scar, eye scar, full body scars, small eye scar, and blush from `facial features/` and `facial features bottom/`.
 Bangs are from the creator's separate two-layer top-hair set.
 Source files: top hair and thair bottom options 0, dreadlock fringe 1–2, thair 1–24, and thair natural 1–5.
 
