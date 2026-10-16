@@ -31,6 +31,12 @@ FARMS = [
     "Beach Farm",
     "Meadowlands Farm",
 ]
+FARM_INFO = {
+    "Standard Farm": (
+        "10% bonus on farming. Holding animals here is easy. "
+        "No monsters spawn at night here."
+    ),
+}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 EYE_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "eye_colors.json").read_text()
@@ -1298,9 +1304,55 @@ class FarmButton(discord.ui.Button):
         self.farm_name = name
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        await interaction.response.send_message(
-            f"You picked the {self.farm_name}.", ephemeral=True
+        info = FARM_INFO.get(self.farm_name)
+        if info is None:
+            await interaction.response.send_message(
+                f"You picked the {self.farm_name}.", ephemeral=True
+            )
+            return
+        picker = interaction.message
+        await interaction.response.edit_message(view=None)
+        await picker.reply(
+            f"{info}\n\nAre you sure you want this farm?",
+            view=ConfirmFarmView(interaction.user.id, self.farm_name, picker),
         )
+
+
+class ConfirmFarmView(discord.ui.View):
+    def __init__(
+        self, owner_id: int, farm_name: str, picker: discord.Message
+    ) -> None:
+        super().__init__(timeout=600)
+        self.owner_id = owner_id
+        self.farm_name = farm_name
+        self.picker = picker
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This is not your farm.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Yes", style=discord.ButtonStyle.success)
+    async def yes(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        saved = read_progress(self.owner_id) or {}
+        write_progress(self.owner_id, {**saved, "farm": self.farm_name})
+        await interaction.response.edit_message(
+            content=f"You chose the {self.farm_name}!", view=None
+        )
+        self.stop()
+
+    @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
+    async def no(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await self.picker.edit(view=FarmView(self.owner_id))
+        await interaction.message.delete()
+        self.stop()
 
 
 class FarmView(discord.ui.View):
