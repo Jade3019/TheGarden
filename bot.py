@@ -233,6 +233,11 @@ class BodyView(discord.ui.View):
             "brows": "Brows Done",
         }[self.stage]
 
+    def add_step_button(self, button: CategoryButton) -> None:
+        self.remove_item(self.done_button)
+        self.add_item(button)
+        self.add_item(self.done_button)
+
     async def select_stage(
         self,
         interaction: discord.Interaction,
@@ -321,7 +326,7 @@ class BodyView(discord.ui.View):
         self.step_indices.setdefault("eyes", 0)
         if self.eyes_button is None:
             self.eyes_button = CategoryButton("Eyes", row=1, stage="eyes")
-            self.add_item(self.eyes_button)
+            self.add_step_button(self.eyes_button)
         await self.select_stage(interaction, "eyes")
 
     async def finish_eyes(self, interaction: discord.Interaction) -> None:
@@ -343,7 +348,7 @@ class BodyView(discord.ui.View):
         self.step_indices.setdefault("brows", 0)
         if self.brows_button is None:
             self.brows_button = CategoryButton("Brows", row=1, stage="brows")
-            self.add_item(self.brows_button)
+            self.add_step_button(self.brows_button)
         if self.colors is not None:
             self.colors.add_brows_button()
         await self.select_stage(interaction, "brows")
