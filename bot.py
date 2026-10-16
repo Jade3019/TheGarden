@@ -43,28 +43,30 @@ def load_body_images() -> list[Path]:
 
 
 def load_skin_images(face_name: str) -> list[Path]:
-    # Files are named like 7.skincolor1.png for face 7.
     if not SKIN_DIR.is_dir():
         return []
-    prefix = f"{face_name}.skincolor".lower()
     return sorted(
         (
             p
             for p in SKIN_DIR.iterdir()
-            if p.name.lower().startswith(prefix) and p.suffix.lower() in IMAGE_SUFFIXES
+            if re.fullmatch(
+                rf"{re.escape(face_name)}\.skincolor\d+", p.stem, re.IGNORECASE
+            )
+            and p.suffix.lower() in IMAGE_SUFFIXES
         ),
         key=natural_key,
     )
 
 
-def load_eye_images() -> list[Path]:
+def load_eye_images(skin_color_number: str) -> list[Path]:
     if not EYES_DIR.is_dir():
         return []
+    expected_suffix = f".eyeskin{skin_color_number}".lower()
     return sorted(
         (
             p
             for p in EYES_DIR.iterdir()
-            if re.fullmatch(r"\d+\.eyeskin1", p.stem.lower())
+            if re.fullmatch(rf"\d+{re.escape(expected_suffix)}", p.stem.lower())
             and p.suffix.lower() in IMAGE_SUFFIXES
         ),
         key=natural_key,
@@ -151,7 +153,10 @@ class BodyView(discord.ui.View):
 
     async def finish_skin(self, interaction: discord.Interaction) -> None:
         self.stage = "eyes"
-        eye_images = load_eye_images()
+        selected_skin = self.images[self.index].stem
+        skin_match = re.search(r"\.skincolor(\d+)$", selected_skin, re.IGNORECASE)
+        skin_color_number = skin_match.group(1) if skin_match else "1"
+        eye_images = load_eye_images(skin_color_number)
 
         # Rebuild the row so the order is Shape, Eyes, Eyes Done.
         self.remove_item(self.done_button)
@@ -172,7 +177,8 @@ class BodyView(discord.ui.View):
             self.next.disabled = True
             await interaction.response.edit_message(view=self)
             await interaction.followup.send(
-                "No eye images found in assets/eyes yet.", ephemeral=True
+                f"No eyeskin{skin_color_number} images found in assets/eyes yet.",
+                ephemeral=True,
             )
 
         if self.colors is not None and self.colors.message is not None:
