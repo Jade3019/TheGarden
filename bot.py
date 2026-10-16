@@ -36,6 +36,10 @@ FARM_INFO = {
         "10% bonus on farming. Holding animals here is easy. "
         "No monsters spawn at night here."
     ),
+    "Riverland Farm": (
+        "Fishing is 25% easier. Holding animals here is a bit difficult. "
+        "If you reach level 10 on fishing, getting treasures is a bit easier."
+    ),
 }
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 EYE_PALETTES = json.loads(
