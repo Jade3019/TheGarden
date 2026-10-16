@@ -44,6 +44,10 @@ FARM_INFO = {
         "Possibility for random forages to be found. Finding wood here is easier. "
         "Less stone drops here."
     ),
+    "Wilderness Farm": (
+        "Monsters have a chance of spawning. Easier for forages to spawn. "
+        "Stone drops less. Wood a bit more."
+    ),
 }
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 EYE_PALETTES = json.loads(
@@ -1499,9 +1503,62 @@ class FarmBot(discord.Client):
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(intents=intents)
+        # Per-server counting sessions, kept in memory only.
+        self.counting: dict[int, dict] = {}
+
+    async def handle_count_command(self, message: discord.Message) -> bool:
+        content = message.content.strip()
+        lowered = content.lower()
+        if not lowered.startswith("s!"):
+            return False
+        key = message.guild.id if message.guild else message.channel.id
+        session = self.counting.get(key)
+        no_pings = discord.AllowedMentions.none()
+
+        if lowered == "s!timestart":
+            if session is not None and session["active"]:
+                await message.reply("Already counting messages.")
+            else:
+                self.counting[key] = {"active": True, "counts": {}}
+                await message.reply("Started counting messages.")
+            return True
+        if lowered == "s!timestop":
+            if session is None or not session["active"]:
+                await message.reply("Not counting right now. Use s!timestart.")
+            else:
+                session["active"] = False
+                await message.reply("Stopped counting messages.")
+            return True
+        if lowered.startswith("s!count"):
+            target = next((m for m in message.mentions if m != self.user), None)
+            if target is None:
+                await message.reply("Use s!count @user.")
+            elif session is None:
+                await message.reply("Nothing was counted yet. Use s!timestart.")
+            else:
+                total = session["counts"].get(target.id, 0)
+                suffix = "" if not session["active"] else " so far"
+                await message.reply(
+                    f"{target.display_name} sent {total} message(s){suffix}.",
+                    allowed_mentions=no_pings,
+                )
+            return True
+        return False
 
     async def on_message(self, message: discord.Message) -> None:
-        if message.author.bot or self.user not in message.mentions:
+        if message.author.bot:
+            return
+        if await self.handle_count_command(message):
+            return
+        key = message.guild.id if message.guild else message.channel.id
+        session = self.counting.get(key)
+        if session is not None and session["active"]:
+            counts = session["counts"]
+            counts[message.author.id] = counts.get(message.author.id, 0) + 1
+        await self.handle_farm_message(message)
+
+    async def handle_farm_message(self, message: discord.Message) -> None:
+        if self.user not in message.mentions:
             return
 
         text = MENTION_PATTERN.sub("", message.content).strip().lower()
