@@ -21,8 +21,13 @@ BASE_EYE_SHADES = [tuple(shade) + (255,) for shade in EYE_PALETTES[0]["shades"]]
 def render_eye_preview(skin_path: Path, eye_path: Path, color_id: int) -> io.BytesIO:
     skin = Image.open(skin_path).convert("RGBA")
     eyes = Image.open(eye_path).convert("RGBA")
-    if skin.size != eyes.size:
-        raise ValueError("Skin and eye images must have the same dimensions.")
+    eye_match = re.fullmatch(r"(\d+)\.eyeskin1", eye_path.stem, re.IGNORECASE)
+    if eye_match is None:
+        raise ValueError(f"Unexpected eye asset name: {eye_path.name}")
+    reference_path = SKIN_DIR / f"{eye_match.group(1)}.skincolor1.png"
+    reference = Image.open(reference_path).convert("RGBA")
+    if skin.size != eyes.size or eyes.size != reference.size:
+        raise ValueError("Skin, eye, and reference images must have the same dimensions.")
 
     target_shades = EYE_PALETTES[color_id - 1]["shades"]
     shade_map = {
@@ -31,11 +36,12 @@ def render_eye_preview(skin_path: Path, eye_path: Path, color_id: int) -> io.Byt
     }
     skin_pixels = skin.load()
     eye_pixels = eyes.load()
-    for y in range(skin.height):
+    reference_pixels = reference.load()
+    for y in range(85, min(146, skin.height)):
         for x in range(skin.width):
-            replacement = shade_map.get(eye_pixels[x, y])
-            if replacement is not None:
-                skin_pixels[x, y] = replacement
+            eye_pixel = eye_pixels[x, y]
+            if eye_pixel != reference_pixels[x, y]:
+                skin_pixels[x, y] = shade_map.get(eye_pixel, eye_pixel)
 
     output = io.BytesIO()
     skin.save(output, format="PNG")
