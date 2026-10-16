@@ -613,6 +613,7 @@ class BodyView(discord.ui.View):
         self.selected_mouth_image = self.images[self.index]
         self.step_indices["mouth"] = self.index
         hair_images = load_hair_images()
+        bang_images = load_bang_images()
         if not hair_images:
             await interaction.response.send_message(
                 "No hairstyle images found in assets/hair.", ephemeral=True
@@ -621,6 +622,12 @@ class BodyView(discord.ui.View):
 
         self.step_images["hair"] = hair_images
         self.step_indices.setdefault("hair", 0)
+        if bang_images:
+            self.step_images["bangs"] = bang_images
+            self.step_indices.setdefault("bangs", min(8, len(bang_images) - 1))
+            selected_bangs = bang_images[self.step_indices["bangs"]]
+            self.selected_bangs_top_image = selected_bangs
+            self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / selected_bangs.name
         if self.hair_button is None:
             self.hair_button = CategoryButton("Hair", row=1, stage="hair")
             self.add_step_button(self.hair_button)
