@@ -14,6 +14,9 @@ EYES_DIR = Path(__file__).parent / "assets" / "eyes"
 BROWS_DIR = Path(__file__).parent / "assets" / "brows"
 NOSES_DIR = Path(__file__).parent / "assets" / "noses"
 MOUTHS_DIR = Path(__file__).parent / "assets" / "mouths"
+HAIR_DIR = Path(__file__).parent / "assets" / "hair"
+BANGS_TOP_DIR = Path(__file__).parent / "assets" / "bangs" / "top"
+BANGS_BOTTOM_DIR = Path(__file__).parent / "assets" / "bangs" / "bottom"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 EYE_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "eye_colors.json").read_text()
@@ -28,8 +31,27 @@ def render_eye_preview(
     brow_path: Path | None = None,
     nose_path: Path | None = None,
     mouth_path: Path | None = None,
+    hair_path: Path | None = None,
+    bangs_top_path: Path | None = None,
+    bangs_bottom_path: Path | None = None,
 ) -> io.BytesIO:
     skin = Image.open(skin_path).convert("RGBA")
+    back_layers = [layer for layer in (hair_path, bangs_bottom_path) if layer is not None]
+    if back_layers:
+        body = skin.copy()
+        body_pixels = body.load()
+        for y in range(body.height):
+            for x in range(body.width):
+                red, green, blue, _ = body_pixels[x, y]
+                if red >= 254 and green >= 254 and blue >= 254:
+                    body_pixels[x, y] = (255, 255, 255, 0)
+        background = Image.new("RGBA", skin.size, (255, 255, 255, 255))
+        for layer_path in back_layers:
+            layer = Image.open(layer_path).convert("RGBA")
+            layer = layer.resize(skin.size, Image.Resampling.NEAREST)
+            background.alpha_composite(layer)
+        background.alpha_composite(body)
+        skin = background
     eyes = Image.open(eye_path).convert("RGBA")
     eye_match = re.fullmatch(r"(\d+)\.eyeskin1", eye_path.stem, re.IGNORECASE)
     if eye_match is None:
@@ -65,6 +87,10 @@ def render_eye_preview(
         mouth = Image.open(mouth_path).convert("RGBA")
         mouth = mouth.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(mouth)
+    if bangs_top_path is not None:
+        bangs_top = Image.open(bangs_top_path).convert("RGBA")
+        bangs_top = bangs_top.resize(skin.size, Image.Resampling.NEAREST)
+        skin.alpha_composite(bangs_top)
 
     output = io.BytesIO()
     skin.save(output, format="PNG")
@@ -165,6 +191,29 @@ def load_mouth_images() -> list[Path]:
     )
 
 
+def load_hair_images() -> list[Path]:
+    if not HAIR_DIR.is_dir():
+        return []
+    return sorted(
+        (path for path in HAIR_DIR.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES),
+        key=natural_key,
+    )
+
+
+def load_bang_images() -> list[Path]:
+    if not BANGS_TOP_DIR.is_dir() or not BANGS_BOTTOM_DIR.is_dir():
+        return []
+    return sorted(
+        (
+            top_path
+            for top_path in BANGS_TOP_DIR.iterdir()
+            if top_path.suffix.lower() in IMAGE_SUFFIXES
+            and (BANGS_BOTTOM_DIR / top_path.name).is_file()
+        ),
+        key=natural_key,
+    )
+
+
 class BodyView(discord.ui.View):
     def __init__(self, owner_id: int, images: list[Path]) -> None:
         super().__init__(timeout=600)
@@ -183,10 +232,15 @@ class BodyView(discord.ui.View):
         self.selected_brow_image: Path | None = None
         self.selected_nose_image: Path | None = None
         self.selected_mouth_image: Path | None = None
+        self.selected_hair_image: Path | None = None
+        self.selected_bangs_top_image: Path | None = None
+        self.selected_bangs_bottom_image: Path | None = None
         self.eyes_button: CategoryButton | None = None
         self.brows_button: CategoryButton | None = None
         self.nose_button: CategoryButton | None = None
         self.mouth_button: CategoryButton | None = None
+        self.hair_button: CategoryButton | None = None
+        self.bangs_button: CategoryButton | None = None
         self.shape_button = CategoryButton("Shape", row=1, stage="shape", selected=True)
         self.done_button = DoneButton("Shape Done", row=1)
         self.add_item(self.shape_button)
@@ -202,21 +256,30 @@ class BodyView(discord.ui.View):
             "brows": "Brows",
             "nose": "Nose",
             "mouth": "Mouth",
+            "hair": "Hair",
+            "bangs": "Bangs",
         }[self.stage]
         if self.stage == "eye_color":
             label_index = self.eye_color_id
         elif self.stage == "brows":
             label_index = self.index
-        elif self.stage in {"nose", "mouth"}:
+        elif self.stage in {"nose", "mouth", "hair", "bangs"}:
             label_index = self.index
         else:
             label_index = self.index + 1
         self.face.label = f"{kind} {label_index}"
-        if self.stage in {"eyes", "eye_color", "brows", "nose", "mouth"} and self.selected_skin_image:
+        if self.stage in {"eyes", "eye_color", "brows", "nose", "mouth", "hair", "bangs"} and self.selected_skin_image:
             eye_path = path if self.stage == "eyes" else self.selected_eye_image
             brow_path = path if self.stage == "brows" else self.selected_brow_image
             nose_path = path if self.stage == "nose" else self.selected_nose_image
             mouth_path = path if self.stage == "mouth" else self.selected_mouth_image
+            hair_path = path if self.stage == "hair" else self.selected_hair_image
+            bangs_top_path = path if self.stage == "bangs" else self.selected_bangs_top_image
+            bangs_bottom_path = (
+                BANGS_BOTTOM_DIR / path.name
+                if self.stage == "bangs"
+                else self.selected_bangs_bottom_image
+            )
             preview = render_eye_preview(
                 self.selected_skin_image,
                 eye_path,
@@ -224,6 +287,9 @@ class BodyView(discord.ui.View):
                 brow_path,
                 nose_path,
                 mouth_path,
+                hair_path,
+                bangs_top_path,
+                bangs_bottom_path,
             )
             return discord.File(preview, filename="character.png")
         return discord.File(path, filename=f"body{path.suffix.lower()}")
@@ -256,6 +322,11 @@ class BodyView(discord.ui.View):
             self.selected_nose_image = self.images[self.index]
         elif self.stage == "mouth":
             self.selected_mouth_image = self.images[self.index]
+        elif self.stage == "hair":
+            self.selected_hair_image = self.images[self.index]
+        elif self.stage == "bangs":
+            self.selected_bangs_top_image = self.images[self.index]
+            self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / self.images[self.index].name
         file = self.current()
         await interaction.response.edit_message(attachments=[file], view=self)
 
@@ -266,6 +337,8 @@ class BodyView(discord.ui.View):
             "brows": self.brows_button,
             "nose": self.nose_button,
             "mouth": self.mouth_button,
+            "hair": self.hair_button,
+            "bangs": self.bangs_button,
         }
         for stage, button in category_buttons.items():
             if button is not None:
@@ -284,18 +357,31 @@ class BodyView(discord.ui.View):
             "brows": "Brows Done",
             "nose": "Nose Done",
             "mouth": "Mouth Done",
+            "hair": "Hair Done",
+            "bangs": "Bangs Done",
         }[self.stage]
 
     def add_step_button(self, button: CategoryButton) -> None:
         self.remove_item(self.done_button)
+        for row in range(button.row, 5):
+            category_count = sum(
+                1
+                for item in self.children
+                if isinstance(item, CategoryButton) and item.row == row
+            )
+            if category_count < 5:
+                button.row = row
+                break
         self.add_item(button)
-        category_count = sum(
-            1
+        category_rows = [
+            item.row
             for item in self.children
-            if isinstance(item, CategoryButton) and item.row == button.row
-        )
-        if category_count >= 5:
-            self.done_button.row = button.row + 1
+            if isinstance(item, CategoryButton)
+        ]
+        done_row = max(category_rows)
+        if sum(row == done_row for row in category_rows) >= 5:
+            done_row += 1
+        self.done_button.row = done_row
         self.add_item(self.done_button)
 
     async def select_stage(
@@ -325,6 +411,11 @@ class BodyView(discord.ui.View):
             self.selected_nose_image = self.images[self.index]
         elif self.stage == "mouth":
             self.selected_mouth_image = self.images[self.index]
+        elif self.stage == "hair":
+            self.selected_hair_image = self.images[self.index]
+        elif self.stage == "bangs":
+            self.selected_bangs_top_image = self.images[self.index]
+            self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / self.images[self.index].name
 
         self.stage = stage
         self.images = images
@@ -341,6 +432,11 @@ class BodyView(discord.ui.View):
             self.selected_nose_image = self.images[self.index]
         elif stage == "mouth":
             self.selected_mouth_image = self.images[self.index]
+        elif stage == "hair":
+            self.selected_hair_image = self.images[self.index]
+        elif stage == "bangs":
+            self.selected_bangs_top_image = self.images[self.index]
+            self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / self.images[self.index].name
         self.update_stage_buttons()
         preview = self.current()
 
@@ -369,6 +465,10 @@ class BodyView(discord.ui.View):
         elif self.stage == "nose":
             await self.finish_nose(interaction)
         elif self.stage == "mouth":
+            await self.finish_mouth(interaction)
+        elif self.stage == "hair":
+            await self.finish_hair(interaction)
+        elif self.stage == "bangs":
             await interaction.response.send_message(
                 "Your character is ready!", ephemeral=True
             )
@@ -462,6 +562,40 @@ class BodyView(discord.ui.View):
             self.mouth_button = CategoryButton("Mouth", row=1, stage="mouth")
             self.add_step_button(self.mouth_button)
         await self.select_stage(interaction, "mouth")
+
+    async def finish_mouth(self, interaction: discord.Interaction) -> None:
+        self.selected_mouth_image = self.images[self.index]
+        self.step_indices["mouth"] = self.index
+        hair_images = load_hair_images()
+        if not hair_images:
+            await interaction.response.send_message(
+                "No hairstyle images found in assets/hair.", ephemeral=True
+            )
+            return
+
+        self.step_images["hair"] = hair_images
+        self.step_indices.setdefault("hair", 0)
+        if self.hair_button is None:
+            self.hair_button = CategoryButton("Hair", row=1, stage="hair")
+            self.add_step_button(self.hair_button)
+        await self.select_stage(interaction, "hair")
+
+    async def finish_hair(self, interaction: discord.Interaction) -> None:
+        self.selected_hair_image = self.images[self.index]
+        self.step_indices["hair"] = self.index
+        bang_images = load_bang_images()
+        if not bang_images:
+            await interaction.response.send_message(
+                "No bangs images found in assets/bangs.", ephemeral=True
+            )
+            return
+
+        self.step_images["bangs"] = bang_images
+        self.step_indices.setdefault("bangs", 0)
+        if self.bangs_button is None:
+            self.bangs_button = CategoryButton("Bangs", row=1, stage="bangs")
+            self.add_step_button(self.bangs_button)
+        await self.select_stage(interaction, "bangs")
 
     @discord.ui.button(emoji="⬅️", style=discord.ButtonStyle.secondary, row=0)
     async def previous(

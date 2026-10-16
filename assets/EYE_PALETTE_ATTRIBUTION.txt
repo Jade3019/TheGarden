@@ -9,8 +9,12 @@ Nose image layers are from the same creator and source:
 Source files: nose/0.png and nose/nose 1.png through nose/nose 13.png.
 Mouth image layers are from the same creator and source:
 Source files: mouth/0.png and mouth/mouth 1.png through mouth/mouth 11.png.
-Nose image layers are from the same creator and source:
-Source files: nose/0.png and nose/nose 1.png through nose/nose 13.png.
+Bottom-layer hairstyle images are from the same creator and source; top-hair/bangs images were not downloaded.
+Source files: bottom layer hair/0.png, bhair 1.png through bhair 15.png, and bhair 17.png through bhair 30.png.
+Bangs layers are from the creator's top-hair set and its matching lower layers.
+Source values: 0, dreadlock fringe 1–2, thair 1–24, and thair natural 1–5 from `top hair/` and `thair bottom/`.
+Bangs are from the creator's separate two-layer top-hair set.
+Source files: top hair and thair bottom options 0, dreadlock fringe 1–2, thair 1–24, and thair natural 1–5.
 
 
 These assets are used for non-commercial purposes with attribution. Adaptations must be shared under the same license. Do not use these assets or adaptations for commercial purposes.
