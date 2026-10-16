@@ -124,6 +124,7 @@ class BodyView(discord.ui.View):
         self.selected_face: str | None = None
         self.selected_skin_image: Path | None = None
         self.eye_color_id = 1
+        self.selected_eye_image: Path | None = None
         self.eyes_button: CategoryButton | None = None
         self.shape_button = CategoryButton("Shape", row=1, selected=True)
         self.done_button = DoneButton("Shape Done", row=1)
@@ -136,12 +137,14 @@ class BodyView(discord.ui.View):
             "shape": "Face",
             "skin": "Skin Color",
             "eyes": "Eyes",
-            "eye_color": "Eyes",
+            "eye_color": "Eye Color",
         }[self.stage]
-        self.face.label = f"{kind} {self.index + 1}"
+        label_index = self.eye_color_id if self.stage == "eye_color" else self.index + 1
+        self.face.label = f"{kind} {label_index}"
         if self.stage in {"eyes", "eye_color"} and self.selected_skin_image:
+            eye_path = self.selected_eye_image if self.stage == "eye_color" else path
             preview = render_eye_preview(
-                self.selected_skin_image, path, self.eye_color_id
+                self.selected_skin_image, eye_path, self.eye_color_id
             )
             return discord.File(preview, filename="character.png")
         return discord.File(path, filename=f"body{path.suffix.lower()}")
@@ -242,13 +245,17 @@ class BodyView(discord.ui.View):
 
     async def finish_eyes(self, interaction: discord.Interaction) -> None:
         self.stage = "eye_color"
-        self.previous.disabled = True
-        self.next.disabled = True
+        self.selected_eye_image = self.images[self.index]
+        self.eye_color_id = 1
+        self.previous.disabled = False
+        self.next.disabled = False
         if self.eyes_button is not None:
             self.eyes_button.style = discord.ButtonStyle.secondary
             self.eyes_button.disabled = True
         self.done_button.label = "Eye Color Done"
-        await interaction.response.edit_message(view=self)
+        await interaction.response.edit_message(
+            attachments=[self.current()], view=self
+        )
 
         if self.colors is not None and self.colors.message is not None:
             self.colors.add_eye_color_button()
@@ -258,7 +265,10 @@ class BodyView(discord.ui.View):
     async def previous(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        self.index = (self.index - 1) % len(self.images)
+        if self.stage == "eye_color":
+            self.eye_color_id = (self.eye_color_id - 2) % len(EYE_PALETTES) + 1
+        else:
+            self.index = (self.index - 1) % len(self.images)
         await self.show(interaction)
 
     @discord.ui.button(
@@ -273,7 +283,10 @@ class BodyView(discord.ui.View):
     async def next(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        self.index = (self.index + 1) % len(self.images)
+        if self.stage == "eye_color":
+            self.eye_color_id = self.eye_color_id % len(EYE_PALETTES) + 1
+        else:
+            self.index = (self.index + 1) % len(self.images)
         await self.show(interaction)
 
 
@@ -283,13 +296,6 @@ class ColorButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         if self.style == discord.ButtonStyle.primary:
-            if self.label == "Eye Color":
-                await interaction.response.send_message(
-                    "Choose an eye color:",
-                    view=EyePaletteView(self.view.owner_id, self.view.body_view),
-                    ephemeral=True,
-                )
-                return
             await interaction.response.defer()
         else:
             await interaction.response.send_message(
@@ -328,48 +334,6 @@ class ColorView(discord.ui.View):
                 await self.message.edit(view=None)
             except discord.HTTPException:
                 pass
-
-
-class EyePaletteSelect(discord.ui.Select):
-    def __init__(self, body_view: BodyView) -> None:
-        self.body_view = body_view
-        options = [
-            discord.SelectOption(
-                label=palette["name"].title(),
-                value=str(palette["id"]),
-                description=palette["hex"],
-            )
-            for palette in EYE_PALETTES
-        ]
-        super().__init__(placeholder="Select an eye color", options=options)
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        color_id = int(self.values[0])
-        self.body_view.eye_color_id = color_id
-        await interaction.response.defer(ephemeral=True)
-        if self.body_view.message is not None:
-            await self.body_view.message.edit(
-                attachments=[self.body_view.current()], view=self.body_view
-            )
-        palette = EYE_PALETTES[color_id - 1]
-        await interaction.followup.send(
-            f"Eye color set to {palette['name'].title()}.", ephemeral=True
-        )
-
-
-class EyePaletteView(discord.ui.View):
-    def __init__(self, owner_id: int, body_view: BodyView) -> None:
-        super().__init__(timeout=180)
-        self.owner_id = owner_id
-        self.add_item(EyePaletteSelect(body_view))
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.owner_id:
-            await interaction.response.send_message(
-                "This color menu is not for you.", ephemeral=True
-            )
-            return False
-        return True
 
 
 class StartView(discord.ui.View):
