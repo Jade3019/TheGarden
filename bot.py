@@ -1,6 +1,7 @@
 import asyncio
 import io
 import json
+import os
 import re
 from pathlib import Path
 
@@ -17,6 +18,7 @@ MOUTHS_DIR = Path(__file__).parent / "assets" / "mouths"
 HAIR_DIR = Path(__file__).parent / "assets" / "hair"
 BANGS_TOP_DIR = Path(__file__).parent / "assets" / "bangs" / "top"
 BANGS_BOTTOM_DIR = Path(__file__).parent / "assets" / "bangs" / "bottom"
+PROGRESS_FILE = Path(__file__).parent / "data" / "farm_progress.json"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 EYE_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "eye_colors.json").read_text()
@@ -26,6 +28,26 @@ HAIR_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "hair_colors.json").read_text()
 )
 BASE_HAIR_SHADES = [tuple(shade) for shade in HAIR_PALETTES[0]["shades"]]
+
+
+def read_progress(user_id: int) -> dict | None:
+    try:
+        data = json.loads(PROGRESS_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data.get(str(user_id))
+
+
+def write_progress(user_id: int, progress: dict) -> None:
+    try:
+        data = json.loads(PROGRESS_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    data[str(user_id)] = progress
+    PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = PROGRESS_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(data, separators=(",", ":")))
+    os.replace(temporary, PROGRESS_FILE)
 
 
 def recolor_hair_layer(path: Path, color_id: int) -> Image.Image:
@@ -269,6 +291,112 @@ class BodyView(discord.ui.View):
         self.add_item(self.shape_button)
         self.add_item(self.done_button)
 
+    @classmethod
+    def restore(cls, owner_id: int, saved: dict) -> "BodyView | None":
+        shape_images = load_body_images()
+        if not shape_images:
+            return None
+        view = cls(owner_id, shape_images)
+        view.selected_face = saved.get("selected_face")
+        view.eye_color_id = int(saved.get("eye_color_id", 1))
+        view.hair_color_id = int(saved.get("hair_color_id", 1))
+        view.step_indices.update(
+            {key: max(0, int(value)) for key, value in saved.get("step_indices", {}).items()}
+        )
+
+        loaders = {
+            "skin": lambda: load_skin_images(view.selected_face or ""),
+            "eyes": load_eye_images,
+            "brows": load_brow_images,
+            "nose": load_nose_images,
+            "mouth": load_mouth_images,
+            "hair": load_hair_images,
+            "bangs": load_bang_images,
+        }
+        for step in saved.get("steps", []):
+            if step in loaders:
+                images = loaders[step]()
+                if images:
+                    view.step_images[step] = images
+
+        saved_stage = saved.get("stage", "shape")
+        image_stage = {"eye_color": "eyes", "hair_color": "bangs"}.get(
+            saved_stage, saved_stage
+        )
+        if image_stage not in view.step_images:
+            saved_stage = "shape"
+            image_stage = "shape"
+        view.stage = saved_stage
+        view.images = view.step_images[image_stage]
+        view.index = min(
+            view.step_indices.get(image_stage, 0), len(view.images) - 1
+        )
+
+        for key, attribute in (
+            ("skin", "selected_skin_image"),
+            ("eyes", "selected_eye_image"),
+            ("brows", "selected_brow_image"),
+            ("nose", "selected_nose_image"),
+            ("mouth", "selected_mouth_image"),
+            ("hair", "selected_hair_image"),
+        ):
+            images = view.step_images.get(key)
+            if images:
+                selected_index = min(view.step_indices.get(key, 0), len(images) - 1)
+                setattr(view, attribute, images[selected_index])
+
+        bangs = view.step_images.get("bangs")
+        if bangs:
+            bangs_index = min(view.step_indices.get("bangs", 0), len(bangs) - 1)
+            view.selected_bangs_top_image = bangs[bangs_index]
+            view.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / bangs[bangs_index].name
+
+        for step, label in (
+            ("eyes", "Eyes"),
+            ("brows", "Brows"),
+            ("nose", "Nose"),
+            ("mouth", "Mouth"),
+            ("hair", "Hair"),
+            ("bangs", "Bangs"),
+        ):
+            if step in view.step_images:
+                button = CategoryButton(label, row=1, stage=step)
+                setattr(view, f"{step}_button", button)
+                view.add_step_button(button)
+        view.update_stage_buttons()
+        return view
+
+    def save_progress(self) -> None:
+        if self.stage not in {"eye_color", "hair_color"}:
+            self.step_indices[self.stage] = self.index
+        if self.stage == "skin":
+            self.selected_skin_image = self.images[self.index]
+        elif self.stage == "eyes":
+            self.selected_eye_image = self.images[self.index]
+        elif self.stage == "brows":
+            self.selected_brow_image = self.images[self.index]
+        elif self.stage == "nose":
+            self.selected_nose_image = self.images[self.index]
+        elif self.stage == "mouth":
+            self.selected_mouth_image = self.images[self.index]
+        elif self.stage == "hair":
+            self.selected_hair_image = self.images[self.index]
+        elif self.stage == "bangs":
+            self.selected_bangs_top_image = self.images[self.index]
+            self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / self.images[self.index].name
+
+        write_progress(
+            self.owner_id,
+            {
+                "stage": self.stage,
+                "selected_face": self.selected_face,
+                "step_indices": self.step_indices,
+                "steps": list(self.step_images),
+                "eye_color_id": self.eye_color_id,
+                "hair_color_id": self.hair_color_id,
+            },
+        )
+
     def current(self) -> discord.File:
         path = self.images[self.index]
         kind = {
@@ -337,23 +465,7 @@ class BodyView(discord.ui.View):
                 pass
 
     async def show(self, interaction: discord.Interaction) -> None:
-        if self.stage not in {"eye_color", "hair_color"}:
-            self.step_indices[self.stage] = self.index
-        if self.stage == "skin":
-            self.selected_skin_image = self.images[self.index]
-        elif self.stage == "eyes":
-            self.selected_eye_image = self.images[self.index]
-        elif self.stage == "brows":
-            self.selected_brow_image = self.images[self.index]
-        elif self.stage == "nose":
-            self.selected_nose_image = self.images[self.index]
-        elif self.stage == "mouth":
-            self.selected_mouth_image = self.images[self.index]
-        elif self.stage == "hair":
-            self.selected_hair_image = self.images[self.index]
-        elif self.stage == "bangs":
-            self.selected_bangs_top_image = self.images[self.index]
-            self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / self.images[self.index].name
+        self.save_progress()
         file = self.current()
         await interaction.response.edit_message(attachments=[file], view=self)
 
@@ -494,6 +606,7 @@ class BodyView(discord.ui.View):
         if self.colors is not None and self.colors.message is not None:
             self.colors.update_stage_buttons(self.stage, self.step_images)
             await self.colors.message.edit(view=self.colors)
+        self.save_progress()
 
     async def finish_step(self, interaction: discord.Interaction) -> None:
         if self.stage == "shape":
@@ -806,6 +919,7 @@ class StartView(discord.ui.View):
         colors = ColorView(self.owner_id, view)
         colors.message = await view.message.reply("Colors", view=colors)
         view.colors = colors
+        view.save_progress()
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
     async def no(
@@ -828,6 +942,21 @@ class FarmBot(discord.Client):
 
         text = MENTION_PATTERN.sub("", message.content).strip().lower()
         if text == "start":
+            saved = read_progress(message.author.id)
+            if saved is not None:
+                view = BodyView.restore(message.author.id, saved)
+                if view is not None:
+                    view.message = await message.reply(file=view.current(), view=view)
+                    colors = ColorView(message.author.id, view)
+                    if "eyes" in view.step_images:
+                        colors.add_eye_color_button()
+                    if "bangs" in view.step_images:
+                        colors.add_hair_color_button()
+                    colors.update_stage_buttons(view.stage, view.step_images)
+                    colors.message = await view.message.reply("Colors", view=colors)
+                    view.colors = colors
+                    view.save_progress()
+                    return
             await message.reply(
                 "Do you want to start your farm?", view=StartView(message.author.id)
             )
