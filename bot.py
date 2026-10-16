@@ -1013,6 +1013,9 @@ class BodyView(discord.ui.View):
         if self.colors is not None:
             self.colors.add_shirt_color_button()
         await self.select_stage(interaction, "shirt_color")
+        await interaction.followup.send(
+            "Don't worry, you are able to get more clothes later.", ephemeral=True
+        )
 
     def save_portrait(self) -> None:
         portrait = self.current().fp.getvalue()
