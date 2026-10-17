@@ -1543,9 +1543,11 @@ class FishingGameView(discord.ui.View):
     def __init__(self, owner_id: int) -> None:
         super().__init__(timeout=180)
         self.owner_id = owner_id
-        self.bar_center = self.track_top + self.bar_height // 2
+        self.bar_center = (self.track_top + self.track_bottom) // 2
         self.fish_x = (self.track_left + self.track_right) // 2
-        self.fish_center = self.track_top + 15
+        self.fish_center = random.randint(
+            self.track_top + 12, self.track_bottom - 12
+        )
         self.progress = 0
         self.turns = 0
         self.result: str | None = None
