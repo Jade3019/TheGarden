@@ -26,6 +26,8 @@ BED_IMAGE = Path(__file__).parent / "room_edits" / "image copy.png"
 ROOM_FLOOR_BOUNDS = (32, 202, 555, 558)
 BED_RENDER_SIZE = (100, 150)
 BED_MOVE_STEP = 8
+# Bangs layer drawn with every hairstyle so the head top is never bald.
+HAIR_HEAD_TOP = "26.png"
 FARMS = [
     "Standard Farm",
     "Riverland Farm",
@@ -213,9 +215,17 @@ def render_eye_preview(
         if source_pixel[3] and target_pixel[3] and source_pixel[:3] != target_pixel[:3]:
             skin_shade_map[source_pixel[:3]] = target_pixel[:3]
 
+    head_top_layers: list[Path] = []
+    if hair_path is not None:
+        with Image.open(hair_path) as hair_image:
+            if hair_image.convert("RGBA").getchannel("A").getbbox() is not None:
+                head_top_layers = [
+                    BANGS_BOTTOM_DIR / HAIR_HEAD_TOP,
+                    BANGS_TOP_DIR / HAIR_HEAD_TOP,
+                ]
     back_layers = [
         (layer, True)
-        for layer in (hair_path, bangs_bottom_path)
+        for layer in (hair_path, *head_top_layers[:1], bangs_bottom_path)
         if layer is not None
     ] + [
         (layer, False)
@@ -271,6 +281,10 @@ def render_eye_preview(
         mouth = Image.open(mouth_path).convert("RGBA")
         mouth = mouth.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(mouth)
+    if head_top_layers:
+        head_top = recolor_hair_layer(head_top_layers[1], hair_color_id)
+        head_top = head_top.resize(skin.size, Image.Resampling.NEAREST)
+        skin.alpha_composite(head_top)
     if bangs_top_path is not None:
         bangs_top = recolor_hair_layer(bangs_top_path, hair_color_id)
         bangs_top = bangs_top.resize(skin.size, Image.Resampling.NEAREST)
@@ -1018,7 +1032,7 @@ class BodyView(discord.ui.View):
         self.step_indices.setdefault("hair", 0)
         if bang_images:
             self.step_images["bangs"] = bang_images
-            self.step_indices.setdefault("bangs", min(26, len(bang_images) - 1))
+            self.step_indices.setdefault("bangs", 0)
             selected_bangs = bang_images[self.step_indices["bangs"]]
             self.selected_bangs_top_image = selected_bangs
             self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / selected_bangs.name
