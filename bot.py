@@ -1537,12 +1537,16 @@ class FishingGameView(discord.ui.View):
     track_left = 62
     track_right = 140
     bar_height = 72
+    bar_width = 38
 
     def __init__(self, owner_id: int) -> None:
         super().__init__(timeout=180)
         self.owner_id = owner_id
+        self.bar_x = (self.track_left + self.track_right) // 2
         self.bar_center = (self.track_top + self.track_bottom) // 2
+        self.fish_x = self.bar_x
         self.fish_center = random.randint(self.track_top + 12, self.track_bottom - 12)
+        self.fish_step = 28
         self.progress = 0
         self.turns = 0
         self.result: str | None = None
@@ -1551,13 +1555,9 @@ class FishingGameView(discord.ui.View):
 
     def advance(self, direction: int) -> None:
         half_bar = self.bar_height // 2
-        self.bar_center = max(
-            self.track_top + half_bar,
-            min(self.track_bottom - half_bar, self.bar_center + direction * 20),
-        )
         self.fish_center = max(
             self.track_top + 12,
-            min(self.track_bottom - 12, self.fish_center + random.randint(-24, 24)),
+            min(self.track_bottom - 12, self.fish_center + direction * self.fish_step),
         )
         self.turns += 1
         if abs(self.fish_center - self.bar_center) <= half_bar - 8:
@@ -1582,15 +1582,24 @@ class FishingGameView(discord.ui.View):
         bar_top = self.bar_center - self.bar_height // 2
         bar_bottom = self.bar_center + self.bar_height // 2
         draw.rectangle(
-            (self.track_left + 5, bar_top, self.track_right - 5, bar_bottom),
+            (
+                self.bar_x - self.bar_width // 2,
+                bar_top,
+                self.bar_x + self.bar_width // 2,
+                bar_bottom,
+            ),
             fill=(73, 169, 93),
             outline=(174, 226, 127),
             width=3,
         )
         fish_y = self.fish_center
         draw.polygon(
-            [(self.track_left + 19, fish_y), (self.track_left + 34, fish_y - 9),
-             (self.track_left + 53, fish_y), (self.track_left + 34, fish_y + 9)],
+            [
+                (self.fish_x - 12, fish_y),
+                (self.fish_x - 4, fish_y - 9),
+                (self.fish_x + 12, fish_y),
+                (self.fish_x - 4, fish_y + 9),
+            ],
             fill=(255, 220, 103),
             outline=(255, 245, 190),
         )
