@@ -1436,9 +1436,13 @@ class RoomTestView(discord.ui.View):
             Image.Resampling.NEAREST,
         )
         left, top, right, bottom = ROOM_FLOOR_BOUNDS
-        self.min_x, self.min_y = left, top
-        self.max_x = right - self.bed.width
-        self.max_y = bottom - self.bed.height
+        opaque_left, opaque_top, opaque_right, opaque_bottom = (
+            self.bed.getchannel("A").getbbox()
+        )
+        self.min_x = left - opaque_left
+        self.min_y = top - opaque_top
+        self.max_x = right - opaque_right
+        self.max_y = bottom - opaque_bottom
         self.x = max(self.min_x, min(self.max_x, (left + right - self.bed.width) // 2))
         self.y = max(self.min_y, min(self.max_y, (top + bottom - self.bed.height) // 2))
         self.add_item(BedMoveButton("⬅️", -BED_MOVE_STEP, 0))
