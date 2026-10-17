@@ -1508,13 +1508,14 @@ class RoomTestView(discord.ui.View):
 
 
 class FishingControlButton(discord.ui.Button):
-    def __init__(self, label: str, direction: int) -> None:
+    def __init__(self, label: str, dx: int, dy: int) -> None:
         super().__init__(label=label, style=discord.ButtonStyle.primary, row=0)
-        self.direction = direction
+        self.dx = dx
+        self.dy = dy
 
     async def callback(self, interaction: discord.Interaction) -> None:
         view: FishingGameView = self.view
-        view.advance(self.direction)
+        view.advance(self.dx, self.dy)
         image = discord.File(view.render(), filename="fishing_test.png")
         if view.result is not None:
             view.stop()
@@ -1544,23 +1545,40 @@ class FishingGameView(discord.ui.View):
         self.owner_id = owner_id
         self.bar_x = (self.track_left + self.track_right) // 2
         self.bar_center = (self.track_top + self.track_bottom) // 2
-        self.fish_x = self.bar_x
+        self.fish_x = random.randint(self.track_left + 14, self.track_right - 14)
         self.fish_center = random.randint(self.track_top + 12, self.track_bottom - 12)
-        self.fish_step = 28
         self.progress = 0
         self.turns = 0
         self.result: str | None = None
-        self.add_item(FishingControlButton("▲ Up", -1))
-        self.add_item(FishingControlButton("▼ Down", 1))
+        self.add_item(FishingControlButton("◀ Left", -1, 0))
+        self.add_item(FishingControlButton("▲ Up", 0, -1))
+        self.add_item(FishingControlButton("▼ Down", 0, 1))
+        self.add_item(FishingControlButton("Right ▶", 1, 0))
 
-    def advance(self, direction: int) -> None:
+    def advance(self, dx: int, dy: int) -> None:
         half_bar = self.bar_height // 2
+        half_width = self.bar_width // 2
+        self.bar_x = max(
+            self.track_left + 5 + half_width,
+            min(self.track_right - 5 - half_width, self.bar_x + dx * 14),
+        )
+        self.bar_center = max(
+            self.track_top + half_bar,
+            min(self.track_bottom - half_bar, self.bar_center + dy * 20),
+        )
+        self.fish_x = max(
+            self.track_left + 14,
+            min(self.track_right - 14, self.fish_x + random.randint(-12, 12)),
+        )
         self.fish_center = max(
             self.track_top + 12,
-            min(self.track_bottom - 12, self.fish_center + direction * self.fish_step),
+            min(self.track_bottom - 12, self.fish_center + random.randint(-24, 24)),
         )
         self.turns += 1
-        if abs(self.fish_center - self.bar_center) <= half_bar - 8:
+        if (
+            abs(self.fish_x - self.bar_x) <= half_width + 10
+            and abs(self.fish_center - self.bar_center) <= half_bar - 8
+        ):
             self.progress = min(100, self.progress + 12)
         else:
             self.progress = max(0, self.progress - 8)
