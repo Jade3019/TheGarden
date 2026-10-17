@@ -1560,10 +1560,6 @@ class FishingGameView(discord.ui.View):
             self.track_top + half_bar,
             min(self.track_bottom - half_bar, self.bar_center + direction * 20),
         )
-        self.fish_x = max(
-            self.track_left + 14,
-            min(self.track_right - 14, self.fish_x + random.randint(-12, 12)),
-        )
         self.fish_center = max(
             self.track_top + 12,
             min(self.track_bottom - 12, self.fish_center + random.randint(-24, 24)),
