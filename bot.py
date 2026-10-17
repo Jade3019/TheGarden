@@ -1530,20 +1530,22 @@ class FishingControlButton(discord.ui.Button):
 
 
 class FishingGameView(discord.ui.View):
-    width = 180
-    height = 330
+    width = 166
+    height = 332
     track_top = 24
     track_bottom = 278
-    track_left = 62
-    track_right = 140
+    track_left = 61
+    track_right = 136
     bar_height = 72
+    progress_left = 24
+    progress_right = 39
 
     def __init__(self, owner_id: int) -> None:
         super().__init__(timeout=180)
         self.owner_id = owner_id
-        self.bar_center = (self.track_top + self.track_bottom) // 2
-        self.fish_x = random.randint(self.track_left + 14, self.track_right - 14)
-        self.fish_center = random.randint(self.track_top + 12, self.track_bottom - 12)
+        self.bar_center = self.track_top + self.bar_height // 2
+        self.fish_x = (self.track_left + self.track_right) // 2
+        self.fish_center = self.track_top + 12
         self.progress = 0
         self.turns = 0
         self.result: str | None = None
@@ -1577,19 +1579,13 @@ class FishingGameView(discord.ui.View):
     def render(self) -> io.BytesIO:
         image = Image.new("RGBA", (self.width, self.height), (27, 37, 55, 255))
         draw = ImageDraw.Draw(image)
-        draw.rectangle((10, 10, 158, 305), fill=(56, 69, 91), outline=(164, 135, 91), width=3)
-        draw.rectangle(
-            (self.track_left, self.track_top, self.track_right, self.track_bottom),
-            fill=(28, 49, 72),
-            outline=(218, 191, 128),
-            width=4,
-        )
+        draw.rectangle((10, 10, 153, 305), fill=(56, 69, 91), outline=(164, 135, 91), width=3)
         bar_top = self.bar_center - self.bar_height // 2
         bar_bottom = self.bar_center + self.bar_height // 2
         draw.rectangle(
             (self.track_left + 5, bar_top, self.track_right - 5, bar_bottom),
             fill=(73, 169, 93),
-            outline=(174, 226, 127),
+            outline=(218, 191, 128),
             width=3,
         )
         fish_y = self.fish_center
@@ -1603,11 +1599,16 @@ class FishingGameView(discord.ui.View):
             fill=(255, 220, 103),
             outline=(255, 245, 190),
         )
-        draw.rectangle((25, self.track_top, 40, self.track_bottom), fill=(28, 49, 72), outline=(218, 191, 128), width=2)
+        draw.rectangle(
+            (self.progress_left, self.track_top, self.progress_right, self.track_bottom),
+            fill=(28, 49, 72),
+            outline=(218, 191, 128),
+            width=2,
+        )
         progress_height = round((self.track_bottom - self.track_top) * self.progress / 100)
         if progress_height:
             draw.rectangle(
-                (28, self.track_bottom - progress_height, 37, self.track_bottom - 2),
+                (self.progress_left + 3, self.track_bottom - progress_height, self.progress_right - 3, self.track_bottom - 2),
                 fill=(95, 207, 112),
             )
         font = ImageFont.load_default(size=14)
