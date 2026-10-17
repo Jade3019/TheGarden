@@ -52,6 +52,11 @@ FARM_INFO = {
         "Monsters have a chance of spawning. Easier for forages to spawn. "
         "Stone drops less. Wood a bit more."
     ),
+    "Four Corners Farm": (
+        "It works exactly the same as Standard Farm but with 4 corners. "
+        "10% bonus on farming. Holding animals here is easy. "
+        "No monsters spawn here."
+    ),
 }
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 EYE_PALETTES = json.loads(
@@ -1332,6 +1337,11 @@ class FarmButton(discord.ui.Button):
             f"{info}\n\nAre you sure you want this farm?",
             view=ConfirmFarmView(interaction.user.id, self.farm_name, picker),
         )
+        if self.farm_name == "Four Corners Farm":
+            await interaction.followup.send(
+                "I will try to add multiplayer features. try to add it eventually if its an option.",
+                ephemeral=True,
+            )
 
 
 class ConfirmFarmView(discord.ui.View):
