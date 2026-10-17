@@ -461,6 +461,7 @@ class BodyView(discord.ui.View):
         self.message: discord.Message | None = None
         self.colors: "ColorView | None" = None
         self.stage = "shape"
+        self.test_mode = False
         self.selected_face: str | None = None
         self.selected_skin_image: Path | None = None
         self.eye_color_id = 1
@@ -606,6 +607,8 @@ class BodyView(discord.ui.View):
                 MARKS_BOTTOM_DIR / self.images[self.index].name,
             )
 
+        if self.test_mode:
+            return
         write_progress(
             self.owner_id,
             {
@@ -1015,7 +1018,7 @@ class BodyView(discord.ui.View):
         self.step_indices.setdefault("hair", 0)
         if bang_images:
             self.step_images["bangs"] = bang_images
-            self.step_indices.setdefault("bangs", min(8, len(bang_images) - 1))
+            self.step_indices.setdefault("bangs", min(26, len(bang_images) - 1))
             selected_bangs = bang_images[self.step_indices["bangs"]]
             self.selected_bangs_top_image = selected_bangs
             self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / selected_bangs.name
@@ -1176,6 +1179,11 @@ class SaveProgressButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         self.view.body_view.save_progress()
+        if self.view.body_view.test_mode:
+            await interaction.response.send_message(
+                "Test mode: nothing is saved.", ephemeral=True
+            )
+            return
         await interaction.response.send_message("Progress saved.", ephemeral=True)
 
 
@@ -1305,6 +1313,14 @@ class ConfirmDoneView(discord.ui.View):
     async def yes(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
+        if self.body_view.test_mode:
+            await interaction.response.edit_message(
+                content="Test finished. Your saved portrait was not changed.",
+                attachments=[],
+                view=None,
+            )
+            self.stop()
+            return
         self.body_view.save_progress()
         self.body_view.save_portrait()
         write_progress(
@@ -1608,6 +1624,19 @@ class FarmBot(discord.Client):
                 file=discord.File(view.render(), filename="room_test.png"),
                 view=view,
             )
+            return
+
+        if message.content.strip().lower() == "s-test":
+            images = load_body_images()
+            if not images:
+                await message.reply("No body images found in assets/bodies.")
+                return
+            view = BodyView(message.author.id, images)
+            view.test_mode = True
+            view.message = await message.reply(file=view.current(), view=view)
+            colors = ColorView(message.author.id, view)
+            colors.message = await view.message.reply("Colors", view=colors)
+            view.colors = colors
             return
 
         if self.user not in message.mentions:
