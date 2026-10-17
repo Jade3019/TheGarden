@@ -1617,22 +1617,6 @@ class FishingGameView(discord.ui.View):
         return True
 
 
-fishing_command_group = discord.app_commands.Group(
-    name="s", description="Garden test commands"
-)
-
-
-@fishing_command_group.command(name="test", description="Test the fishing minigame")
-async def fishing_test(interaction: discord.Interaction) -> None:
-    view = FishingGameView(interaction.user.id)
-    await interaction.response.send_message(
-        content="Fishing test | Catch progress: 0%",
-        file=discord.File(view.render(), filename="fishing_test.png"),
-        view=view,
-        ephemeral=True,
-    )
-
-
 async def show_farm_picker(message: discord.Message, owner_id: int) -> None:
     await asyncio.sleep(3)
     try:
@@ -1752,14 +1736,18 @@ class FarmBot(discord.Client):
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(intents=intents)
-        self.tree = discord.app_commands.CommandTree(self)
-        self.tree.add_command(fishing_command_group)
-
-    async def setup_hook(self) -> None:
-        await self.tree.sync()
 
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot:
+            return
+
+        if message.content.strip().lower() == "p!test":
+            view = FishingGameView(message.author.id)
+            await message.reply(
+                content="Fishing test | Catch progress: 0%",
+                file=discord.File(view.render(), filename="fishing_test.png"),
+                view=view,
+            )
             return
 
         if message.content.strip().lower() == "s!test":
