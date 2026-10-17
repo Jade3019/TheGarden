@@ -69,6 +69,10 @@ FARM_INFO = {
         "Items may wash up from the ocean, from trash to rare artifacts. "
         "Trees and stones work normally here."
     ),
+    "Meadowlands Farm": (
+        "You get 2 chickens and a coop. Instead of receiving seeds, you receive hay. "
+        "Stone and wood drops are normal."
+    ),
 }
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 EYE_PALETTES = json.loads(
