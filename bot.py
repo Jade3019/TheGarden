@@ -24,7 +24,8 @@ FARMS_DIR = Path(__file__).parent / "assets" / "farms"
 ROOM_IMAGE = Path(__file__).parent / "room_edits" / "image.png"
 BED_IMAGE = Path(__file__).parent / "room_edits" / "image copy.png"
 ROOM_FLOOR_BOUNDS = (32, 202, 555, 558)
-BED_SCALE = 1.25
+VERTICAL_PLANK_LENGTH = 107
+BED_LENGTH_IN_PLANKS = 1.25
 BED_MOVE_STEP = 4
 FARMS = [
     "Standard Farm",
@@ -1431,8 +1432,12 @@ class RoomTestView(discord.ui.View):
         self.room_path = room_path
         with Image.open(bed_path) as source:
             self.bed = source.convert("RGBA")
+        target_height = round(VERTICAL_PLANK_LENGTH * BED_LENGTH_IN_PLANKS)
         self.bed = self.bed.resize(
-            (round(self.bed.width * BED_SCALE), round(self.bed.height * BED_SCALE)),
+            (
+                round(self.bed.width * target_height / self.bed.height),
+                target_height,
+            ),
             Image.Resampling.NEAREST,
         )
         left, top, right, bottom = ROOM_FLOOR_BOUNDS
