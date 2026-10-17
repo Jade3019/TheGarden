@@ -2,6 +2,7 @@ import asyncio
 import io
 import json
 import os
+import random
 import re
 from pathlib import Path
 
@@ -1506,6 +1507,132 @@ class RoomTestView(discord.ui.View):
         return True
 
 
+class FishingControlButton(discord.ui.Button):
+    def __init__(self, label: str, direction: int) -> None:
+        super().__init__(label=label, style=discord.ButtonStyle.primary, row=0)
+        self.direction = direction
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view: FishingGameView = self.view
+        view.advance(self.direction)
+        image = discord.File(view.render(), filename="fishing_test.png")
+        if view.result is not None:
+            view.stop()
+            await interaction.response.edit_message(
+                content=view.result, attachments=[image], view=None
+            )
+            return
+        await interaction.response.edit_message(
+            content=f"Fishing test | Catch progress: {view.progress}%",
+            attachments=[image],
+            view=view,
+        )
+
+
+class FishingGameView(discord.ui.View):
+    width = 180
+    height = 330
+    track_top = 24
+    track_bottom = 278
+    track_left = 62
+    track_right = 140
+    bar_height = 72
+
+    def __init__(self, owner_id: int) -> None:
+        super().__init__(timeout=180)
+        self.owner_id = owner_id
+        self.bar_center = (self.track_top + self.track_bottom) // 2
+        self.fish_center = random.randint(self.track_top + 12, self.track_bottom - 12)
+        self.progress = 0
+        self.turns = 0
+        self.result: str | None = None
+        self.add_item(FishingControlButton("▲ Up", -1))
+        self.add_item(FishingControlButton("▼ Down", 1))
+
+    def advance(self, direction: int) -> None:
+        half_bar = self.bar_height // 2
+        self.bar_center = max(
+            self.track_top + half_bar,
+            min(self.track_bottom - half_bar, self.bar_center + direction * 20),
+        )
+        self.fish_center = max(
+            self.track_top + 12,
+            min(self.track_bottom - 12, self.fish_center + random.randint(-24, 24)),
+        )
+        self.turns += 1
+        if abs(self.fish_center - self.bar_center) <= half_bar - 8:
+            self.progress = min(100, self.progress + 12)
+        else:
+            self.progress = max(0, self.progress - 8)
+        if self.progress >= 100:
+            self.result = "You caught the fish! This was only a test."
+        elif self.turns >= 35:
+            self.result = "The fish got away. This was only a test."
+
+    def render(self) -> io.BytesIO:
+        image = Image.new("RGBA", (self.width, self.height), (27, 37, 55, 255))
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((10, 10, 158, 305), fill=(56, 69, 91), outline=(164, 135, 91), width=3)
+        draw.rectangle(
+            (self.track_left, self.track_top, self.track_right, self.track_bottom),
+            fill=(28, 49, 72),
+            outline=(218, 191, 128),
+            width=4,
+        )
+        bar_top = self.bar_center - self.bar_height // 2
+        bar_bottom = self.bar_center + self.bar_height // 2
+        draw.rectangle(
+            (self.track_left + 5, bar_top, self.track_right - 5, bar_bottom),
+            fill=(73, 169, 93),
+            outline=(174, 226, 127),
+            width=3,
+        )
+        fish_y = self.fish_center
+        draw.polygon(
+            [(self.track_left + 19, fish_y), (self.track_left + 34, fish_y - 9),
+             (self.track_left + 53, fish_y), (self.track_left + 34, fish_y + 9)],
+            fill=(255, 220, 103),
+            outline=(255, 245, 190),
+        )
+        draw.rectangle((25, self.track_top, 40, self.track_bottom), fill=(28, 49, 72), outline=(218, 191, 128), width=2)
+        progress_height = round((self.track_bottom - self.track_top) * self.progress / 100)
+        if progress_height:
+            draw.rectangle(
+                (28, self.track_bottom - progress_height, 37, self.track_bottom - 2),
+                fill=(95, 207, 112),
+            )
+        font = ImageFont.load_default(size=14)
+        draw.text((13, 286), f"Catch {self.progress}%", font=font, fill=(255, 255, 255))
+        output = io.BytesIO()
+        image.save(output, format="PNG")
+        output.seek(0)
+        return output
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This fishing test belongs to someone else.", ephemeral=True
+            )
+            return False
+        return True
+
+
+fishing_command_group = discord.app_commands.Group(
+    name="s", description="Garden test commands"
+)
+
+
+@fishing_command_group.command(name="test", description="Test the fishing minigame")
+async def fishing_test(interaction: discord.Interaction) -> None:
+    view = FishingGameView(interaction.user.id)
+    await interaction.response.send_message(
+        content="Fishing test | Catch progress: 0%",
+        file=discord.File(view.render(), filename="fishing_test.png"),
+        view=view,
+        ephemeral=True,
+    )
+
+
 async def show_farm_picker(message: discord.Message, owner_id: int) -> None:
     await asyncio.sleep(3)
     try:
@@ -1625,6 +1752,11 @@ class FarmBot(discord.Client):
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(intents=intents)
+        self.tree = discord.app_commands.CommandTree(self)
+        self.tree.add_command(fishing_command_group)
+
+    async def setup_hook(self) -> None:
+        await self.tree.sync()
 
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot:
