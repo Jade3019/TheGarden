@@ -57,6 +57,11 @@ FARM_INFO = {
         "10% bonus on farming. Holding animals here is easy. "
         "No monsters spawn here."
     ),
+    "Beach Farm": (
+        "25% better fishing. Farming speed and quality are 15% lower. "
+        "Items may wash up from the ocean, from trash to rare artifacts. "
+        "Trees and stones work normally here."
+    ),
 }
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 EYE_PALETTES = json.loads(
