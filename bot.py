@@ -21,6 +21,10 @@ MARKS_TOP_DIR = Path(__file__).parent / "assets" / "marks" / "top"
 MARKS_BOTTOM_DIR = Path(__file__).parent / "assets" / "marks" / "bottom"
 PROGRESS_FILE = Path(__file__).parent / "data" / "farm_progress.json"
 FARMS_DIR = Path(__file__).parent / "assets" / "farms"
+ROOM_IMAGE = Path(__file__).parent / "room_edits" / "image.png"
+BED_IMAGE = Path(__file__).parent / "room_edits" / "bed.png"
+ROOM_FLOOR_BOUNDS = (32, 202, 555, 558)
+BED_MOVE_STEP = 2
 FARMS = [
     "Standard Farm",
     "Riverland Farm",
@@ -1403,6 +1407,62 @@ class FarmView(discord.ui.View):
         return True
 
 
+class BedMoveButton(discord.ui.Button):
+    def __init__(self, label: str, dx: int, dy: int) -> None:
+        super().__init__(label=label, style=discord.ButtonStyle.secondary, row=0)
+        self.dx = dx
+        self.dy = dy
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view: RoomTestView = self.view
+        view.move(self.dx, self.dy)
+        preview = view.render()
+        await interaction.response.edit_message(
+            attachments=[discord.File(preview, filename="room_test.png")],
+            view=view,
+        )
+
+
+class RoomTestView(discord.ui.View):
+    def __init__(self, owner_id: int, room_path: Path, bed_path: Path) -> None:
+        super().__init__(timeout=600)
+        self.owner_id = owner_id
+        self.room_path = room_path
+        with Image.open(bed_path) as source:
+            self.bed = source.convert("RGBA")
+        left, top, right, bottom = ROOM_FLOOR_BOUNDS
+        self.min_x, self.min_y = left, top
+        self.max_x = right - self.bed.width
+        self.max_y = bottom - self.bed.height
+        self.x = max(self.min_x, min(self.max_x, (left + right - self.bed.width) // 2))
+        self.y = max(self.min_y, min(self.max_y, (top + bottom - self.bed.height) // 2))
+        self.add_item(BedMoveButton("⬅️", -BED_MOVE_STEP, 0))
+        self.add_item(BedMoveButton("⬆️", 0, -BED_MOVE_STEP))
+        self.add_item(BedMoveButton("⬇️", 0, BED_MOVE_STEP))
+        self.add_item(BedMoveButton("➡️", BED_MOVE_STEP, 0))
+
+    def move(self, dx: int, dy: int) -> None:
+        self.x = max(self.min_x, min(self.max_x, self.x + dx))
+        self.y = max(self.min_y, min(self.max_y, self.y + dy))
+
+    def render(self) -> io.BytesIO:
+        with Image.open(self.room_path) as source:
+            room = source.convert("RGBA")
+        room.alpha_composite(self.bed, (self.x, self.y))
+        output = io.BytesIO()
+        room.save(output, format="PNG")
+        output.seek(0)
+        return output
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This is not your room.", ephemeral=True
+            )
+            return False
+        return True
+
+
 async def show_farm_picker(message: discord.Message, owner_id: int) -> None:
     await asyncio.sleep(3)
     try:
@@ -1524,7 +1584,24 @@ class FarmBot(discord.Client):
         super().__init__(intents=intents)
 
     async def on_message(self, message: discord.Message) -> None:
-        if message.author.bot or self.user not in message.mentions:
+        if message.author.bot:
+            return
+
+        if message.content.strip().lower() == "s!test":
+            if not ROOM_IMAGE.is_file() or not BED_IMAGE.is_file():
+                await message.reply(
+                    "Room or bed image is missing. Expected room_edits/image.png "
+                    "and room_edits/bed.png."
+                )
+                return
+            view = RoomTestView(message.author.id, ROOM_IMAGE, BED_IMAGE)
+            await message.reply(
+                file=discord.File(view.render(), filename="room_test.png"),
+                view=view,
+            )
+            return
+
+        if self.user not in message.mentions:
             return
 
         text = MENTION_PATTERN.sub("", message.content).strip().lower()
