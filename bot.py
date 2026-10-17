@@ -1545,7 +1545,7 @@ class FishingGameView(discord.ui.View):
         self.owner_id = owner_id
         self.bar_center = self.track_top + self.bar_height // 2
         self.fish_x = (self.track_left + self.track_right) // 2
-        self.fish_center = self.track_top + 12
+        self.fish_center = self.track_top + 15
         self.progress = 0
         self.turns = 0
         self.result: str | None = None
@@ -1580,6 +1580,12 @@ class FishingGameView(discord.ui.View):
         image = Image.new("RGBA", (self.width, self.height), (27, 37, 55, 255))
         draw = ImageDraw.Draw(image)
         draw.rectangle((10, 10, 153, 305), fill=(56, 69, 91), outline=(164, 135, 91), width=3)
+        draw.rectangle(
+            (self.track_left, self.track_top, self.track_right, self.track_bottom),
+            fill=(28, 49, 72),
+            outline=(218, 191, 128),
+            width=3,
+        )
         bar_top = self.bar_center - self.bar_height // 2
         bar_bottom = self.bar_center + self.bar_height // 2
         draw.rectangle(
@@ -1591,10 +1597,10 @@ class FishingGameView(discord.ui.View):
         fish_y = self.fish_center
         draw.polygon(
             [
-                (self.fish_x - 12, fish_y),
-                (self.fish_x - 4, fish_y - 9),
-                (self.fish_x + 12, fish_y),
-                (self.fish_x - 4, fish_y + 9),
+                (self.fish_x - 18, fish_y),
+                (self.fish_x - 6, fish_y - 13),
+                (self.fish_x + 18, fish_y),
+                (self.fish_x - 6, fish_y + 13),
             ],
             fill=(255, 220, 103),
             outline=(255, 245, 190),
