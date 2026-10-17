@@ -44,6 +44,10 @@ FARM_INFO = {
         "Possibility for random forages to be found. Finding wood here is easier. "
         "Less stone drops here."
     ),
+    "Hill-top Farm": (
+        "More stone appears, less wood. Artifacts have more chance to spawn here. "
+        "No farming bonus."
+    ),
     "Wilderness Farm": (
         "Monsters have a chance of spawning. Easier for forages to spawn. "
         "Stone drops less. Wood a bit more."
