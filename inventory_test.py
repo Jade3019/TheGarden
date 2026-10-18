@@ -184,6 +184,11 @@ class InventoryTestView(discord.ui.View):
         level: int,
         coins: int,
         portrait_path: Path,
+        farm_name: str = "Farm",
+        daily_earnings: int = 0,
+        day: int = 1,
+        season: str = "Spring",
+        year: int = 1,
     ) -> None:
         super().__init__(timeout=600)
         self.owner_id = owner_id
@@ -191,6 +196,11 @@ class InventoryTestView(discord.ui.View):
         self.level = level
         self.coins = coins
         self.portrait_path = portrait_path
+        self.farm_name = farm_name
+        self.daily_earnings = daily_earnings
+        self.day = day
+        self.season = season
+        self.year = year
         self.items: list[InventoryItem] = []
         self.equipped: dict[str, InventoryItem | None] = {
             slot: None for slot in EQUIPMENT_SLOTS
@@ -311,9 +321,21 @@ class InventoryTestView(discord.ui.View):
                     width=3,
                 )
 
-        coin_x, coin_y = 456, 220
-        draw.ellipse((coin_x, coin_y, coin_x + 28, coin_y + 28), fill=(244, 192, 61), outline=(132, 81, 39), width=3)
-        draw.text((coin_x + 38, coin_y + 5), f"Coins: {self.coins}", font=font, fill=(64, 43, 39))
+        draw.text((452, 214), f"{self.farm_name[:20]}", font=font, fill=(64, 43, 39))
+        stat_boxes = (
+            (452, 242, f"Balance: {self.coins:,}g"),
+            (452, 278, f"Daily earnings: {self.daily_earnings:,}g"),
+            (452, 314, f"Day {self.day}  {self.season}  Year {self.year}"),
+        )
+        for stat_x, stat_y, text in stat_boxes:
+            draw.rounded_rectangle(
+                (stat_x, stat_y, stat_x + 164, stat_y + 29),
+                radius=3,
+                fill=(255, 218, 157),
+                outline=(170, 116, 72),
+                width=2,
+            )
+            draw.text((stat_x + 7, stat_y + 7), text, font=small_font, fill=(64, 43, 39))
         draw.text((298, 367), self.character_name[:24], font=font, fill=(64, 43, 39))
         draw.text((430, 367), f"Level {self.level}", font=font, fill=(64, 43, 39))
         trash_x, trash_y = 651, 409
