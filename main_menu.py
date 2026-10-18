@@ -12,9 +12,14 @@ PIXEL_FONT = {
     "E": ("11111", "10000", "10000", "11110", "10000", "10000", "11111"),
     "G": ("01111", "10000", "10000", "10111", "10001", "10001", "01111"),
     "H": ("10001", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "I": ("11111", "00100", "00100", "00100", "00100", "00100", "11111"),
+    "L": ("10000", "10000", "10000", "10000", "10000", "10000", "11111"),
     "N": ("10001", "11001", "10101", "10101", "10011", "10001", "10001"),
+    "O": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
     "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
     "T": ("11111", "00100", "00100", "00100", "00100", "00100", "00100"),
+    "W": ("10001", "10001", "10001", "10101", "10101", "10101", "01010"),
+    "X": ("10001", "10001", "01010", "00100", "01010", "10001", "10001"),
 }
 
 
@@ -22,7 +27,7 @@ def _pixel_text(draw: ImageDraw.ImageDraw, text: str, x: int, y: int, scale: int
     glyph_width = 5
     spacing = 1
     total_width = sum(glyph_width + spacing for char in text) - spacing
-    x = (WIDTH - total_width * scale) // 2
+    x -= total_width * scale // 2
     for character in text:
         if character == " ":
             x += (glyph_width + spacing) * scale
@@ -44,10 +49,10 @@ def _pixel_text(draw: ImageDraw.ImageDraw, text: str, x: int, y: int, scale: int
 
 
 def render_main_menu() -> io.BytesIO:
-    image = Image.new("RGB", (WIDTH, HEIGHT))
+    image = Image.new("RGB", (WIDTH, 370))
     pixels = image.load()
-    for y in range(HEIGHT):
-        ratio = y / HEIGHT
+    for y in range(370):
+        ratio = y / 370
         color = (
             round(16 + 93 * ratio),
             round(74 + 121 * ratio),
@@ -92,8 +97,43 @@ def render_main_menu() -> io.BytesIO:
         leaf_end = x + 17 * direction
         draw.ellipse((min(leaf_start, leaf_end), y + 11, max(leaf_start, leaf_end), y + 22), fill=(132, 181, 85))
 
-    _pixel_text(draw, "THE GARDEN", 0, 99, 5)
+    _pixel_text(draw, "THE GARDEN", WIDTH // 2, 99, 5)
+
+    button_width, button_height, button_gap = 112, 52, 16
+    button_left = (WIDTH - (button_width * 3 + button_gap * 2)) // 2
+    for index, label in enumerate(("NEW", "LOAD", "EXIT")):
+        left = button_left + index * (button_width + button_gap)
+        top = 286
+        draw.rectangle(
+            (left + 3, top + 4, left + button_width + 3, top + button_height + 4),
+            fill=(69, 45, 39),
+        )
+        draw.rectangle(
+            (left, top, left + button_width, top + button_height),
+            fill=(132, 78, 49),
+            outline=(82, 48, 39),
+            width=3,
+        )
+        draw.rectangle(
+            (left + 5, top + 5, left + button_width - 5, top + button_height - 5),
+            fill=(247, 224, 191),
+            outline=(255, 243, 218),
+            width=2,
+        )
+        draw.line((left + 10, top + 11, left + button_width - 10, top + 11), fill=(255, 250, 230), width=1)
+        _pixel_text(
+            draw,
+            label,
+            left + button_width // 2,
+            top + 19,
+            3,
+        )
+        for screw_x in (left + 8, left + button_width - 8):
+            draw.rectangle((screw_x, top + 5, screw_x + 2, top + 7), fill=(183, 127, 85))
+
     output = io.BytesIO()
-    image.resize((WIDTH * SCALE, HEIGHT * SCALE), Image.Resampling.NEAREST).save(output, format="PNG")
+    image.resize(
+        (WIDTH * SCALE, image.height * SCALE), Image.Resampling.NEAREST
+    ).save(output, format="PNG")
     output.seek(0)
     return output
