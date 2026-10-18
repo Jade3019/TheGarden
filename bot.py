@@ -1971,6 +1971,13 @@ class MainMenuView(discord.ui.View):
                 "No save file was found.", ephemeral=True
             )
             return
+        if saved.get("completed") and not saved.get("farm_name"):
+            await interaction.response.edit_message(
+                content="Now it's time to choose your farm!", view=None
+            )
+            await show_farm_picker(interaction.message, self.owner_id)
+            self.stop()
+            return
         await interaction.response.edit_message(
             content="Loading your save file.", attachments=[], view=None
         )
