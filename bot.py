@@ -1653,10 +1653,13 @@ class ResumeView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         delete_progress(self.owner_id)
+        menu = MainMenuView(self.owner_id)
         await interaction.response.edit_message(
-            content="Choose an option.",
-            attachments=[discord.File(render_main_menu(), filename="main_menu.png")],
-            view=MainMenuView(self.owner_id),
+            content=menu.status,
+            attachments=[
+                discord.File(render_main_menu(menu.selection), filename="main_menu.png")
+            ],
+            view=menu,
         )
         self.stop()
 
@@ -1979,74 +1982,106 @@ class SetFarmNameView(discord.ui.View):
         self.stop()
 
 
+class MainMenuArrow(discord.ui.Button):
+    def __init__(self, direction: int) -> None:
+        super().__init__(
+            label="◀" if direction < 0 else "▶",
+            style=discord.ButtonStyle.secondary,
+            row=0,
+        )
+        self.direction = direction
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view: MainMenuView = self.view
+        view.selection = (view.selection + self.direction) % 3
+        await interaction.response.edit_message(
+            content=view.status,
+            attachments=[
+                discord.File(
+                    render_main_menu(view.selection), filename="main_menu.png"
+                )
+            ],
+            view=view,
+        )
+
+
+class MainMenuConfirmButton(discord.ui.Button):
+    def __init__(self) -> None:
+        super().__init__(label="Yes", style=discord.ButtonStyle.success, row=0)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await self.view.confirm_selection(interaction)
+
+
 class MainMenuView(discord.ui.View):
-    def __init__(self, owner_id: int) -> None:
-        super().__init__(timeout=60)
+    OPTIONS = ("New", "Load", "Exit")
+
+    def __init__(self, owner_id: int, selection: int = 0) -> None:
+        super().__init__(timeout=600)
         self.owner_id = owner_id
+        self.selection = selection % len(self.OPTIONS)
+        self.add_item(MainMenuArrow(-1))
+        self.add_item(MainMenuConfirmButton())
+        self.add_item(MainMenuArrow(1))
+
+    @property
+    def status(self) -> str:
+        return f"Choose {self.OPTIONS[self.selection]}"
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.owner_id:
             await interaction.response.send_message(
-                "This question is not for you.", ephemeral=True
+                "This menu belongs to someone else.", ephemeral=True
             )
             return False
         return True
 
-    @discord.ui.button(label="New", style=discord.ButtonStyle.success)
-    async def new_game(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ) -> None:
-        await interaction.response.edit_message(
-            content="Are you sure you want to restart your save file?",
-            view=ConfirmNewGameView(self.owner_id),
-        )
-        self.stop()
-
-    @discord.ui.button(label="Load", style=discord.ButtonStyle.primary)
-    async def load_game(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ) -> None:
-        saved = read_progress(self.owner_id)
-        if saved is None:
-            await interaction.response.send_message(
-                "No save file was found.", ephemeral=True
-            )
-            return
-        portrait_path = PROGRESS_FILE.parent / "portraits" / f"{self.owner_id}.png"
-        profile_complete = saved.get("completed") or portrait_path.is_file()
-        if profile_complete and not saved.get("farm"):
+    async def confirm_selection(self, interaction: discord.Interaction) -> None:
+        if self.selection == 0:
             await interaction.response.edit_message(
-                content="Now it's time to choose your farm!", view=None
-            )
-            await show_farm_picker(interaction.message, self.owner_id)
-            self.stop()
-            return
-        if profile_complete:
-            attachments = (
-                [discord.File(portrait_path, filename="portrait.png")]
-                if portrait_path.is_file()
-                else []
-            )
-            farm_name = saved.get("farm_name") or "Your farm"
-            farm_type = saved.get("farm") or ""
-            await interaction.response.edit_message(
-                content=f"{saved.get('character_name') or 'Your character'} at {farm_name}"
-                + (f" ({farm_type})" if farm_type else ""),
-                attachments=attachments,
-                view=None,
+                content="Are you sure you want to restart your save file?",
+                view=ConfirmNewGameView(self.owner_id),
             )
             self.stop()
             return
-        await interaction.response.edit_message(
-            content="Loading your save file.", attachments=[], view=None
-        )
-        await begin_portrait_creation(interaction.message, self.owner_id, saved)
-        self.stop()
-
-    @discord.ui.button(label="Exit", style=discord.ButtonStyle.danger)
-    async def exit_game(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ) -> None:
+        if self.selection == 1:
+            saved = read_progress(self.owner_id)
+            if saved is None:
+                await interaction.response.send_message(
+                    "No save file was found.", ephemeral=True
+                )
+                return
+            portrait_path = PROGRESS_FILE.parent / "portraits" / f"{self.owner_id}.png"
+            profile_complete = saved.get("completed") or portrait_path.is_file()
+            if profile_complete and not saved.get("farm"):
+                await interaction.response.edit_message(
+                    content="Now it's time to choose your farm!", view=None
+                )
+                await show_farm_picker(interaction.message, self.owner_id)
+                self.stop()
+                return
+            if profile_complete:
+                attachments = (
+                    [discord.File(portrait_path, filename="portrait.png")]
+                    if portrait_path.is_file()
+                    else []
+                )
+                farm_name = saved.get("farm_name") or "Your farm"
+                farm_type = saved.get("farm") or ""
+                await interaction.response.edit_message(
+                    content=f"{saved.get('character_name') or 'Your character'} at {farm_name}"
+                    + (f" ({farm_type})" if farm_type else ""),
+                    attachments=attachments,
+                    view=None,
+                )
+                self.stop()
+                return
+            await interaction.response.edit_message(
+                content="Loading your save file.", attachments=[], view=None
+            )
+            await begin_portrait_creation(interaction.message, self.owner_id, saved)
+            self.stop()
+            return
         await interaction.response.edit_message(
             content="Goodbye, hope to see you soon.", attachments=[], view=None
         )
@@ -2085,10 +2120,11 @@ class ConfirmNewGameView(discord.ui.View):
     async def no(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
+        menu = MainMenuView(self.owner_id)
         await interaction.response.edit_message(
-            content="Choose an option.",
-            attachments=[discord.File(render_main_menu(), filename="main_menu.png")],
-            view=MainMenuView(self.owner_id),
+            content=menu.status,
+            attachments=[discord.File(render_main_menu(menu.selection), filename="main_menu.png")],
+            view=menu,
         )
         self.stop()
 
@@ -2220,8 +2256,9 @@ class FarmBot(discord.Client):
             await show_farm_picker(reply, message.author.id)
             return
         if text == "start":
+            menu = MainMenuView(message.author.id)
             await message.reply(
-                content="Choose an option.",
-                file=discord.File(render_main_menu(), filename="main_menu.png"),
-                view=MainMenuView(message.author.id),
+                content=menu.status,
+                file=discord.File(render_main_menu(menu.selection), filename="main_menu.png"),
+                view=menu,
             )

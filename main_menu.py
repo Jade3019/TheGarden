@@ -48,7 +48,7 @@ def _pixel_text(draw: ImageDraw.ImageDraw, text: str, x: int, y: int, scale: int
         x += (glyph_width + spacing) * scale
 
 
-def render_main_menu() -> io.BytesIO:
+def render_main_menu(selected_index: int = 0) -> io.BytesIO:
     image = Image.new("RGB", (WIDTH, 370))
     pixels = image.load()
     for y in range(370):
@@ -104,21 +104,22 @@ def render_main_menu() -> io.BytesIO:
     for index, label in enumerate(("NEW", "LOAD", "EXIT")):
         left = button_left + index * (button_width + button_gap)
         top = 286
+        selected = index == selected_index
         draw.rectangle(
             (left + 3, top + 4, left + button_width + 3, top + button_height + 4),
-            fill=(69, 45, 39),
+            fill=(93, 61, 39) if selected else (69, 45, 39),
         )
         draw.rectangle(
             (left, top, left + button_width, top + button_height),
-            fill=(132, 78, 49),
-            outline=(82, 48, 39),
-            width=3,
+            fill=(183, 116, 52) if selected else (132, 78, 49),
+            outline=(255, 226, 91) if selected else (82, 48, 39),
+            width=5 if selected else 3,
         )
         draw.rectangle(
             (left + 5, top + 5, left + button_width - 5, top + button_height - 5),
-            fill=(247, 224, 191),
-            outline=(255, 243, 218),
-            width=2,
+            fill=(255, 238, 173) if selected else (247, 224, 191),
+            outline=(255, 250, 210) if selected else (255, 243, 218),
+            width=3 if selected else 2,
         )
         draw.line((left + 10, top + 11, left + button_width - 10, top + 11), fill=(255, 250, 230), width=1)
         _pixel_text(
