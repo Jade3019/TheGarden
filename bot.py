@@ -7,6 +7,7 @@ from pathlib import Path
 
 import discord
 from PIL import Image, ImageDraw, ImageFont
+from farmer_xnb_test import FarmerXnbTestView
 from fishing_minigame import FishingVersionSelectView
 from inventory_test import InventoryTestView
 MENTION_PATTERN = re.compile(r"<@!?\d+>")
@@ -2111,16 +2112,12 @@ class FarmBot(discord.Client):
             return
 
         if message.content.strip().lower() == "s-test":
-            images = load_body_images()
-            if not images:
-                await message.reply("No body images found in assets/bodies.")
-                return
-            view = BodyView(message.author.id, images)
-            view.test_mode = True
-            view.message = await message.reply(file=view.current(), view=view)
-            colors = ColorView(message.author.id, view)
-            colors.message = await view.message.reply("Colors", view=colors)
-            view.colors = colors
+            view = FarmerXnbTestView(message.author.id)
+            view.message = await message.reply(
+                content=view.status,
+                file=discord.File(view.render(), filename="farmer_test.png"),
+                view=view,
+            )
             return
 
         if self.user not in message.mentions:
