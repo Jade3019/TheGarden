@@ -9,6 +9,7 @@ import discord
 from PIL import Image, ImageDraw, ImageFont
 from fishing_minigame import FishingVersionSelectView
 from inventory_test import InventoryTestView
+from main_menu import render_main_menu
 MENTION_PATTERN = re.compile(r"<@!?\d+>")
 BODY_DIR = Path(__file__).parent / "assets" / "bodies"
 SKIN_DIR = Path(__file__).parent / "assets" / "skincolors"
@@ -1612,7 +1613,9 @@ class ResumeView(discord.ui.View):
     ) -> None:
         delete_progress(self.owner_id)
         await interaction.response.edit_message(
-            content="Main Menu", view=MainMenuView(self.owner_id)
+            content="Choose an option.",
+            attachments=[discord.File(render_main_menu(), filename="main_menu.png")],
+            view=MainMenuView(self.owner_id),
         )
         self.stop()
 
@@ -1979,7 +1982,7 @@ class MainMenuView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         await interaction.response.edit_message(
-            content="Goodbye, hope to see you soon.", view=None
+            content="Goodbye, hope to see you soon.", attachments=[], view=None
         )
         self.stop()
 
@@ -2006,7 +2009,9 @@ class ConfirmNewGameView(discord.ui.View):
             CharacterNameModal(self.owner_id, interaction.message)
         )
         await interaction.message.edit(
-            content="Choose a name for your character in the pop-up.", view=None
+            content="Choose a name for your character in the pop-up.",
+            attachments=[],
+            view=None,
         )
         self.stop()
 
@@ -2015,7 +2020,9 @@ class ConfirmNewGameView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         await interaction.response.edit_message(
-            content="Main Menu", view=MainMenuView(self.owner_id)
+            content="Choose an option.",
+            attachments=[discord.File(render_main_menu(), filename="main_menu.png")],
+            view=MainMenuView(self.owner_id),
         )
         self.stop()
 
@@ -2148,5 +2155,7 @@ class FarmBot(discord.Client):
             return
         if text == "start":
             await message.reply(
-                "Choose an option.", view=MainMenuView(message.author.id)
+                content="Choose an option.",
+                file=discord.File(render_main_menu(), filename="main_menu.png"),
+                view=MainMenuView(message.author.id),
             )
