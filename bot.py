@@ -1994,6 +1994,7 @@ class MainMenuArrow(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction) -> None:
         view: MainMenuView = self.view
         view.selection = (view.selection + self.direction) % 3
+        view.selection_label.label = view.OPTIONS[view.selection]
         await interaction.response.edit_message(
             content=view.status,
             attachments=[
@@ -2003,6 +2004,11 @@ class MainMenuArrow(discord.ui.Button):
             ],
             view=view,
         )
+
+
+class MainMenuSelectionLabel(discord.ui.Button):
+    def __init__(self, label: str) -> None:
+        super().__init__(label=label, style=discord.ButtonStyle.secondary, row=0, disabled=True)
 
 
 class MainMenuConfirmButton(discord.ui.Button):
@@ -2021,12 +2027,14 @@ class MainMenuView(discord.ui.View):
         self.owner_id = owner_id
         self.selection = selection % len(self.OPTIONS)
         self.add_item(MainMenuArrow(-1))
+        self.selection_label = MainMenuSelectionLabel(self.OPTIONS[self.selection])
+        self.add_item(self.selection_label)
         self.add_item(MainMenuConfirmButton())
         self.add_item(MainMenuArrow(1))
 
     @property
     def status(self) -> str:
-        return f"Choose {self.OPTIONS[self.selection]}"
+        return "Choose an option"
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.owner_id:
