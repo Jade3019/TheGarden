@@ -7,9 +7,10 @@ import discord
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 
-ITEMS_PER_PAGE = 24
+ITEMS_PER_PAGE = 36
+ITEMS_PER_PICKER_PAGE = 24
 GRID_COLUMNS = 12
-GRID_ROWS = 2
+GRID_ROWS = 3
 ITEM_COLORS = [
     (92, 164, 108),
     (91, 145, 194),
@@ -52,6 +53,7 @@ class InventoryTestPageButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction) -> None:
         view: InventoryTestView = self.view
         view.page = max(0, min(view.page_count - 1, view.page + self.delta))
+        view.picker_page = 0
         view.selected_item_index = None
         view.refresh_controls()
         await interaction.response.edit_message(
@@ -141,12 +143,24 @@ class InventoryTestEquipButton(discord.ui.Button):
 class InventoryTestItemSelect(discord.ui.Select):
     def __init__(self, view: "InventoryTestView") -> None:
         page_start = view.page * ITEMS_PER_PAGE
+        page_end = min(page_start + ITEMS_PER_PAGE, len(view.items))
+        picker_start = page_start + view.picker_page * ITEMS_PER_PICKER_PAGE
+        picker_end = min(picker_start + ITEMS_PER_PICKER_PAGE, page_end)
         options = [
             discord.SelectOption(label=item.name[:100], value=str(index))
             for index, item in enumerate(
-                view.items[page_start : page_start + ITEMS_PER_PAGE], page_start
+                view.items[picker_start:picker_end], picker_start
             )
         ]
+        if view.picker_page > 0:
+            options.insert(
+                0,
+                discord.SelectOption(label="Previous item choices", value="picker_previous"),
+            )
+        if picker_end < page_end:
+            options.append(
+                discord.SelectOption(label="More item choices", value="picker_next")
+            )
         self.empty = not options
         if not options:
             options = [discord.SelectOption(label="No items", value="none")]
@@ -164,6 +178,24 @@ class InventoryTestItemSelect(discord.ui.Select):
         if self.values[0] == "none":
             await interaction.response.defer()
             return
+        if self.values[0] == "picker_next":
+            view.picker_page += 1
+            view.refresh_controls()
+            await interaction.response.edit_message(
+                content=view.status,
+                attachments=[discord.File(view.render(), filename="inventory.png")],
+                view=view,
+            )
+            return
+        if self.values[0] == "picker_previous":
+            view.picker_page = max(0, view.picker_page - 1)
+            view.refresh_controls()
+            await interaction.response.edit_message(
+                content=view.status,
+                attachments=[discord.File(view.render(), filename="inventory.png")],
+                view=view,
+            )
+            return
         view.selected_item_index = int(self.values[0])
         view.refresh_controls()
         await interaction.response.edit_message(
@@ -175,7 +207,7 @@ class InventoryTestItemSelect(discord.ui.Select):
 
 class InventoryTestView(discord.ui.View):
     width = 720
-    height = 500
+    height = 540
 
     def __init__(
         self,
@@ -207,6 +239,7 @@ class InventoryTestView(discord.ui.View):
         }
         self.page = 0
         self.page_count = 2
+        self.picker_page = 0
         self.selected_item_index: int | None = None
         self.previous_button = InventoryTestPageButton("Previous", -1)
         self.next_button = InventoryTestPageButton("Next", 1)
@@ -234,6 +267,14 @@ class InventoryTestView(discord.ui.View):
 
     def refresh_controls(self) -> None:
         self.page_count = max(2, math.ceil(len(self.items) / ITEMS_PER_PAGE))
+        page_item_count = max(
+            0,
+            min(ITEMS_PER_PAGE, len(self.items) - self.page * ITEMS_PER_PAGE),
+        )
+        self.picker_page = min(
+            self.picker_page,
+            max(0, (page_item_count - 1) // ITEMS_PER_PICKER_PAGE),
+        )
         self.previous_button.disabled = self.page == 0
         self.next_button.disabled = self.page >= self.page_count - 1
         self.delete_button.disabled = self.selected_item_index is None
@@ -245,8 +286,8 @@ class InventoryTestView(discord.ui.View):
         draw = ImageDraw.Draw(image)
         font = ImageFont.load_default(size=18)
         small_font = ImageFont.load_default(size=14)
-        draw.rounded_rectangle((12, 12, 708, 178), radius=6, fill=(103, 72, 48), outline=(213, 156, 86), width=4)
-        draw.rounded_rectangle((20, 20, 700, 170), radius=3, fill=(240, 181, 112), outline=(255, 218, 157), width=3)
+        draw.rounded_rectangle((12, 12, 708, 210), radius=6, fill=(103, 72, 48), outline=(213, 156, 86), width=4)
+        draw.rounded_rectangle((20, 20, 700, 202), radius=3, fill=(240, 181, 112), outline=(255, 218, 157), width=3)
         cell, gap = 48, 6
         grid_width = GRID_COLUMNS * cell + (GRID_COLUMNS - 1) * gap
         left = (self.width - grid_width) // 2
@@ -264,8 +305,8 @@ class InventoryTestView(discord.ui.View):
                 if item_index == self.selected_item_index:
                     draw.rectangle((x + 2, y + 2, x + cell - 2, y + cell - 2), outline=(71, 179, 92), width=4)
 
-        draw.rounded_rectangle((12, 188, 708, 488), radius=6, fill=(103, 72, 48), outline=(213, 156, 86), width=4)
-        draw.rounded_rectangle((20, 196, 700, 480), radius=3, fill=(240, 181, 112), outline=(255, 218, 157), width=3)
+        draw.rounded_rectangle((12, 220, 708, 528), radius=6, fill=(103, 72, 48), outline=(213, 156, 86), width=4)
+        draw.rounded_rectangle((20, 228, 700, 520), radius=3, fill=(240, 181, 112), outline=(255, 218, 157), width=3)
         profile = Image.new("RGBA", (124, 142), (82, 142, 173, 255))
         if self.portrait_path.is_file():
             with Image.open(self.portrait_path) as source:
@@ -283,16 +324,16 @@ class InventoryTestView(discord.ui.View):
                         profile.size, Image.Resampling.NEAREST
                     )
                 profile.alpha_composite(layer)
-        image.alpha_composite(profile, (298, 214))
-        draw.rectangle((298, 214, 422, 356), outline=(112, 66, 45), width=3)
+        image.alpha_composite(profile, (298, 242))
+        draw.rectangle((298, 242, 422, 384), outline=(112, 66, 45), width=3)
 
         slot_positions = {
-            "hat": (34, 208),
-            "shirt": (34, 272),
-            "pants": (34, 336),
-            "accessory_left": (630, 208),
-            "accessory_right": (630, 272),
-            "shoes": (630, 336),
+            "hat": (34, 236),
+            "shirt": (34, 300),
+            "pants": (34, 364),
+            "accessory_left": (630, 236),
+            "accessory_right": (630, 300),
+            "shoes": (630, 364),
         }
         for slot, (slot_x, slot_y) in slot_positions.items():
             draw.rectangle(
@@ -321,11 +362,11 @@ class InventoryTestView(discord.ui.View):
                     width=3,
                 )
 
-        draw.text((452, 214), f"{self.farm_name[:20]}", font=font, fill=(64, 43, 39))
+        draw.text((452, 242), f"{self.farm_name[:20]}", font=font, fill=(64, 43, 39))
         stat_boxes = (
-            (452, 242, f"Balance: {self.coins:,}g"),
-            (452, 278, f"Daily earnings: {self.daily_earnings:,}g"),
-            (452, 314, f"Day {self.day}  {self.season}  Year {self.year}"),
+            (452, 270, f"Balance: {self.coins:,}g"),
+            (452, 306, f"Daily earnings: {self.daily_earnings:,}g"),
+            (452, 342, f"Day {self.day}  {self.season}  Year {self.year}"),
         )
         for stat_x, stat_y, text in stat_boxes:
             draw.rounded_rectangle(
@@ -336,9 +377,9 @@ class InventoryTestView(discord.ui.View):
                 width=2,
             )
             draw.text((stat_x + 7, stat_y + 7), text, font=small_font, fill=(64, 43, 39))
-        draw.text((298, 367), self.character_name[:24], font=font, fill=(64, 43, 39))
-        draw.text((430, 367), f"Level {self.level}", font=font, fill=(64, 43, 39))
-        trash_x, trash_y = 651, 409
+        draw.text((298, 395), self.character_name[:24], font=font, fill=(64, 43, 39))
+        draw.text((430, 395), f"Level {self.level}", font=font, fill=(64, 43, 39))
+        trash_x, trash_y = 651, 424
         draw.rectangle((trash_x + 8, trash_y + 12, trash_x + 33, trash_y + 44), fill=(177, 178, 176), outline=(78, 75, 76), width=3)
         draw.rectangle((trash_x + 3, trash_y + 7, trash_x + 38, trash_y + 13), fill=(204, 204, 199), outline=(78, 75, 76), width=2)
         draw.line((trash_x + 15, trash_y + 18, trash_x + 15, trash_y + 38), fill=(82, 80, 78), width=2)
