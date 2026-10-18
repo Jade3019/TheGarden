@@ -2008,12 +2008,7 @@ class MainMenuArrow(discord.ui.Button):
 
 class MainMenuSelectionLabel(discord.ui.Button):
     def __init__(self, label: str) -> None:
-        super().__init__(label=label, style=discord.ButtonStyle.secondary, row=0, disabled=True)
-
-
-class MainMenuConfirmButton(discord.ui.Button):
-    def __init__(self) -> None:
-        super().__init__(label="Yes", style=discord.ButtonStyle.success, row=0)
+        super().__init__(label=label, style=discord.ButtonStyle.success, row=0)
 
     async def callback(self, interaction: discord.Interaction) -> None:
         await self.view.confirm_selection(interaction)
@@ -2029,7 +2024,6 @@ class MainMenuView(discord.ui.View):
         self.add_item(MainMenuArrow(-1))
         self.selection_label = MainMenuSelectionLabel(self.OPTIONS[self.selection])
         self.add_item(self.selection_label)
-        self.add_item(MainMenuConfirmButton())
         self.add_item(MainMenuArrow(1))
 
     @property
