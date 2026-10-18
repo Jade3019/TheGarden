@@ -307,15 +307,20 @@ class InventoryTestView(discord.ui.View):
 
         draw.rounded_rectangle((12, 220, 708, 528), radius=6, fill=(103, 72, 48), outline=(213, 156, 86), width=4)
         draw.rounded_rectangle((20, 228, 700, 520), radius=3, fill=(240, 181, 112), outline=(255, 218, 157), width=3)
-        profile = Image.new("RGBA", (124, 142), (82, 142, 173, 255))
+        profile = Image.new("RGBA", (124, 174), (82, 142, 173, 255))
         if self.portrait_path.is_file():
             with Image.open(self.portrait_path) as source:
                 portrait = source.convert("RGBA")
         else:
             with Image.open(Path(__file__).parent / "assets" / "bodies" / "1.png") as source:
                 portrait = source.convert("RGBA")
-        portrait = ImageOps.contain(portrait, (116, 134), Image.Resampling.NEAREST)
-        profile.alpha_composite(portrait, ((124 - portrait.width) // 2, (142 - portrait.height) // 2))
+        portrait = ImageOps.fit(
+            portrait,
+            (116, 166),
+            Image.Resampling.NEAREST,
+            centering=(0.5, 0.5),
+        )
+        profile.alpha_composite(portrait, (4, 4))
         for slot in EQUIPMENT_SLOTS:
             item = self.equipped[slot]
             if item is not None and item.portrait_layer is not None and item.portrait_layer.is_file():
@@ -324,16 +329,16 @@ class InventoryTestView(discord.ui.View):
                         profile.size, Image.Resampling.NEAREST
                     )
                 profile.alpha_composite(layer)
-        image.alpha_composite(profile, (298, 242))
-        draw.rectangle((298, 242, 422, 384), outline=(112, 66, 45), width=3)
+        image.alpha_composite(profile, (84, 235))
+        draw.rectangle((84, 235, 208, 409), outline=(112, 66, 45), width=3)
 
         slot_positions = {
-            "hat": (34, 236),
-            "shirt": (34, 300),
-            "pants": (34, 364),
-            "accessory_left": (630, 236),
-            "accessory_right": (630, 300),
-            "shoes": (630, 364),
+            "hat": (22, 232),
+            "shirt": (22, 296),
+            "pants": (22, 360),
+            "accessory_left": (218, 232),
+            "accessory_right": (218, 296),
+            "shoes": (218, 360),
         }
         for slot, (slot_x, slot_y) in slot_positions.items():
             draw.rectangle(
@@ -362,24 +367,24 @@ class InventoryTestView(discord.ui.View):
                     width=3,
                 )
 
-        draw.text((452, 242), f"{self.farm_name[:20]}", font=font, fill=(64, 43, 39))
+        draw.text((304, 240), f"{self.farm_name[:20]}", font=font, fill=(64, 43, 39))
         stat_boxes = (
-            (452, 270, f"Balance: {self.coins:,}g"),
-            (452, 306, f"Daily earnings: {self.daily_earnings:,}g"),
-            (452, 342, f"Day {self.day}  {self.season}  Year {self.year}"),
+            (304, 276, f"Balance: {self.coins:,}g"),
+            (304, 314, f"Daily earnings: {self.daily_earnings:,}g"),
+            (304, 352, f"Day {self.day}  {self.season}  Year {self.year}"),
         )
         for stat_x, stat_y, text in stat_boxes:
             draw.rounded_rectangle(
-                (stat_x, stat_y, stat_x + 164, stat_y + 29),
+                (stat_x, stat_y, stat_x + 376, stat_y + 32),
                 radius=3,
                 fill=(255, 218, 157),
                 outline=(170, 116, 72),
                 width=2,
             )
-            draw.text((stat_x + 7, stat_y + 7), text, font=small_font, fill=(64, 43, 39))
-        draw.text((298, 395), self.character_name[:24], font=font, fill=(64, 43, 39))
-        draw.text((430, 395), f"Level {self.level}", font=font, fill=(64, 43, 39))
-        trash_x, trash_y = 651, 424
+            draw.text((stat_x + 9, stat_y + 8), text, font=font, fill=(64, 43, 39))
+        draw.text((84, 416), self.character_name[:12], font=font, fill=(64, 43, 39))
+        draw.text((162, 416), f"Level {self.level}", font=font, fill=(64, 43, 39))
+        trash_x, trash_y = 660, 414
         draw.rectangle((trash_x + 8, trash_y + 12, trash_x + 33, trash_y + 44), fill=(177, 178, 176), outline=(78, 75, 76), width=3)
         draw.rectangle((trash_x + 3, trash_y + 7, trash_x + 38, trash_y + 13), fill=(204, 204, 199), outline=(78, 75, 76), width=2)
         draw.line((trash_x + 15, trash_y + 18, trash_x + 15, trash_y + 38), fill=(82, 80, 78), width=2)
