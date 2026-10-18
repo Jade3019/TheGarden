@@ -2110,19 +2110,6 @@ class FarmBot(discord.Client):
             )
             return
 
-        if message.content.strip().lower() == "s-test":
-            images = load_body_images()
-            if not images:
-                await message.reply("No body images found in assets/bodies.")
-                return
-            view = BodyView(message.author.id, images)
-            view.test_mode = True
-            view.message = await message.reply(file=view.current(), view=view)
-            colors = ColorView(message.author.id, view)
-            colors.message = await view.message.reply("Colors", view=colors)
-            view.colors = colors
-            return
-
         if self.user not in message.mentions:
             return
 
