@@ -2012,11 +2012,29 @@ class MainMenuView(discord.ui.View):
                 "No save file was found.", ephemeral=True
             )
             return
-        if saved.get("completed") and not saved.get("farm_name"):
+        portrait_path = PROGRESS_FILE.parent / "portraits" / f"{self.owner_id}.png"
+        profile_complete = saved.get("completed") or portrait_path.is_file()
+        if profile_complete and not saved.get("farm"):
             await interaction.response.edit_message(
                 content="Now it's time to choose your farm!", view=None
             )
             await show_farm_picker(interaction.message, self.owner_id)
+            self.stop()
+            return
+        if profile_complete:
+            attachments = (
+                [discord.File(portrait_path, filename="portrait.png")]
+                if portrait_path.is_file()
+                else []
+            )
+            farm_name = saved.get("farm_name") or "Your farm"
+            farm_type = saved.get("farm") or ""
+            await interaction.response.edit_message(
+                content=f"{saved.get('character_name') or 'Your character'} at {farm_name}"
+                + (f" ({farm_type})" if farm_type else ""),
+                attachments=attachments,
+                view=None,
+            )
             self.stop()
             return
         await interaction.response.edit_message(
