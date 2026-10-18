@@ -107,7 +107,7 @@ class FarmerXnbTestView(discord.ui.View):
         self.eye_color = 0
         self.hair_color = 2
         self.shirt = 0
-        self.pants = 0
+        self.pants = 4
         self.accessory = 0
         for label, action, row in (
             ("Gender", "gender", 0),
@@ -164,6 +164,11 @@ class FarmerXnbTestView(discord.ui.View):
             fill=shirt_color,
             outline=shirt_shadow,
         )
+        arm_color = selected[2]
+        draw.line((4, 16, 4, 21), fill=arm_color, width=1)
+        draw.line((11, 16, 11, 21), fill=arm_color, width=1)
+        draw.point((4, 21), fill=tuple(round(channel * 0.9) for channel in arm_color))
+        draw.point((11, 21), fill=tuple(round(channel * 0.9) for channel in arm_color))
         pants_color = CLOTHING_COLORS[self.pants]
         pants_shadow = tuple(round(channel * 0.58) for channel in pants_color)
         draw.polygon(
