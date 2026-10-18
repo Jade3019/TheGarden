@@ -29,8 +29,38 @@ BED_IMAGE = Path(__file__).parent / "room_edits" / "image copy.png"
 ROOM_FLOOR_BOUNDS = (32, 202, 555, 558)
 BED_RENDER_SIZE = (100, 150)
 BED_MOVE_STEP = 8
-# Bangs layer drawn with every hairstyle so the head top is never bald.
-HAIR_HEAD_TOP = "26.png"
+HAIR_FRONT_BY_STYLE: dict[int, int | None] = {
+    0: None,
+    1: 26,
+    2: 26,
+    3: 26,
+    4: 26,
+    5: 26,
+    6: 26,
+    7: 26,
+    8: 26,
+    9: 26,
+    10: 26,
+    11: None,
+    12: None,
+    13: None,
+    14: 26,
+    15: 26,
+    16: 26,
+    17: 26,
+    18: 29,
+    19: 26,
+    20: 26,
+    21: 26,
+    22: 26,
+    23: 26,
+    24: 26,
+    25: 26,
+    26: 26,
+    27: 26,
+    28: 26,
+    29: 26,
+}
 FARMS = [
     "Standard Farm",
     "Riverland Farm",
@@ -231,10 +261,14 @@ def render_eye_preview(
     head_top_layers: list[Path] = []
     if hair_path is not None:
         with Image.open(hair_path) as hair_image:
-            if hair_image.convert("RGBA").getchannel("A").getbbox() is not None:
+            front_style = HAIR_FRONT_BY_STYLE.get(int(hair_path.stem), 26)
+            if (
+                front_style is not None
+                and hair_image.convert("RGBA").getchannel("A").getbbox() is not None
+            ):
                 head_top_layers = [
-                    BANGS_BOTTOM_DIR / HAIR_HEAD_TOP,
-                    BANGS_TOP_DIR / HAIR_HEAD_TOP,
+                    BANGS_BOTTOM_DIR / f"{front_style}.png",
+                    BANGS_TOP_DIR / f"{front_style}.png",
                 ]
     back_layers = [
         (layer, True)
@@ -294,6 +328,11 @@ def render_eye_preview(
         mouth = Image.open(mouth_path).convert("RGBA")
         mouth = mouth.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(mouth)
+    for mark_path in (mark1_top_path, mark2_top_path):
+        if mark_path is not None:
+            mark = recolor_mark_layer(mark_path, skin_shade_map)
+            mark = mark.resize(skin.size, Image.Resampling.NEAREST)
+            skin.alpha_composite(mark)
     if head_top_layers:
         head_top = recolor_hair_layer(head_top_layers[1], hair_color_id)
         head_top = head_top.resize(skin.size, Image.Resampling.NEAREST)
@@ -302,11 +341,6 @@ def render_eye_preview(
         bangs_top = recolor_hair_layer(bangs_top_path, hair_color_id)
         bangs_top = bangs_top.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(bangs_top)
-    for mark_path in (mark1_top_path, mark2_top_path):
-        if mark_path is not None:
-            mark = recolor_mark_layer(mark_path, skin_shade_map)
-            mark = mark.resize(skin.size, Image.Resampling.NEAREST)
-            skin.alpha_composite(mark)
 
     output = io.BytesIO()
     skin.save(output, format="PNG")
