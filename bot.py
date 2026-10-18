@@ -131,6 +131,12 @@ def delete_progress(user_id: int) -> None:
     os.replace(temporary, PROGRESS_FILE)
 
 
+def delete_character_save(user_id: int) -> None:
+    delete_progress(user_id)
+    portrait_path = PROGRESS_FILE.parent / "portraits" / f"{user_id}.png"
+    portrait_path.unlink(missing_ok=True)
+
+
 def recolor_hair_layer(path: Path, color_id: int) -> Image.Image:
     layer = Image.open(path).convert("RGBA")
     target_shades = HAIR_PALETTES[color_id - 1]["shades"]
@@ -1606,7 +1612,7 @@ class ResumeView(discord.ui.View):
     ) -> None:
         delete_progress(self.owner_id)
         await interaction.response.edit_message(
-            content="It's time to make your character.", view=StartView(self.owner_id)
+            content="Main Menu", view=MainMenuView(self.owner_id)
         )
         self.stop()
 
@@ -1929,7 +1935,7 @@ class SetFarmNameView(discord.ui.View):
         self.stop()
 
 
-class StartView(discord.ui.View):
+class MainMenuView(discord.ui.View):
     def __init__(self, owner_id: int) -> None:
         super().__init__(timeout=60)
         self.owner_id = owner_id
@@ -1942,54 +1948,75 @@ class StartView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="Yes", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="New", style=discord.ButtonStyle.success)
+    async def new_game(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await interaction.response.edit_message(
+            content="Are you sure you want to restart your save file?",
+            view=ConfirmNewGameView(self.owner_id),
+        )
+        self.stop()
+
+    @discord.ui.button(label="Load", style=discord.ButtonStyle.primary)
+    async def load_game(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        saved = read_progress(self.owner_id)
+        if saved is None:
+            await interaction.response.send_message(
+                "No save file was found.", ephemeral=True
+            )
+            return
+        await interaction.response.edit_message(
+            content="Loading your save file.", attachments=[], view=None
+        )
+        await begin_portrait_creation(interaction.message, self.owner_id, saved)
+        self.stop()
+
+    @discord.ui.button(label="Exit", style=discord.ButtonStyle.danger)
+    async def exit_game(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await interaction.response.edit_message(
+            content="Goodbye, hope to see you soon.", view=None
+        )
+        self.stop()
+
+
+class ConfirmNewGameView(discord.ui.View):
+    def __init__(self, owner_id: int) -> None:
+        super().__init__(timeout=180)
+        self.owner_id = owner_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This restart confirmation is not for you.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Yes", style=discord.ButtonStyle.danger)
     async def yes(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        saved = read_progress(self.owner_id) or {}
-        character_name = saved.get("character_name", "")
-        farm_name = saved.get("farm_name", "")
-        if character_name and farm_name:
-            await interaction.response.edit_message(
-                content="Starting your character portrait.", view=None
-            )
-            await begin_portrait_creation(
-                interaction.message,
-                self.owner_id,
-                saved,
-            )
-        elif character_name:
-            await interaction.response.send_modal(
-                FarmNameModal(
-                    self.owner_id,
-                    interaction.message,
-                    character_name,
-                    resume_progress=saved if saved.get("steps") else None,
-                )
-            )
-            await interaction.message.edit(
-                content="Choose a name for your farm in the pop-up.", view=None
-            )
-        else:
-            await interaction.response.send_modal(
-                CharacterNameModal(
-                    self.owner_id,
-                    interaction.message,
-                    character_name,
-                    resume_progress=saved if saved.get("steps") else None,
-                )
-            )
-            await interaction.message.edit(
-                content="Choose a name for your character in the pop-up.", view=None
-            )
+        delete_character_save(self.owner_id)
+        await interaction.response.send_modal(
+            CharacterNameModal(self.owner_id, interaction.message)
+        )
+        await interaction.message.edit(
+            content="Choose a name for your character in the pop-up.", view=None
+        )
         self.stop()
 
-    @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="No", style=discord.ButtonStyle.secondary)
     async def no(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        await interaction.response.edit_message(view=None)
-        await interaction.message.reply("Okay, maybe later.")
+        await interaction.response.edit_message(
+            content="Main Menu", view=MainMenuView(self.owner_id)
+        )
         self.stop()
 
 
@@ -2120,17 +2147,6 @@ class FarmBot(discord.Client):
             await show_farm_picker(reply, message.author.id)
             return
         if text == "start":
-            saved = read_progress(message.author.id)
-            if saved is not None and saved.get("completed"):
-                await message.reply("You have already finished your character.")
-                return
-            if saved is not None and saved.get("steps"):
-                await message.reply(
-                    "You have saved progress. Do you want to continue or start over?",
-                    view=ResumeView(message.author.id, saved),
-                )
-                return
             await message.reply(
-                "It's time to make your character.",
-                view=StartView(message.author.id),
+                "Choose an option.", view=MainMenuView(message.author.id)
             )
