@@ -8,7 +8,6 @@ from pathlib import Path
 import discord
 from PIL import Image, ImageDraw, ImageFont
 from fishing_minigame import FishingVersionSelectView
-from inventory import InventoryView
 from inventory_test import InventoryTestView
 MENTION_PATTERN = re.compile(r"<@!?\d+>")
 BODY_DIR = Path(__file__).parent / "assets" / "bodies"
@@ -1765,20 +1764,6 @@ class FarmBot(discord.Client):
             return
 
         if message.content.strip().lower() == "s!inv":
-            view = InventoryView(
-                message.author.id,
-                message.author.display_name,
-                message.author.display_avatar.url,
-                Path(__file__).parent / "data" / "portraits" / f"{message.author.id}.png",
-            )
-            embed, portrait_file = view.render_page()
-            reply_args = {"embed": embed, "view": view}
-            if portrait_file is not None:
-                reply_args["file"] = portrait_file
-            await message.reply(**reply_args)
-            return
-
-        if message.content.strip().lower() == "s.invtest":
             saved = read_progress(message.author.id) or {}
             portrait_path = (
                 Path(__file__).parent
