@@ -9,6 +9,7 @@ import discord
 from PIL import Image, ImageDraw, ImageFont
 from fishing_minigame import FishingVersionSelectView
 from inventory import InventoryView
+from inventory_test import InventoryTestView
 MENTION_PATTERN = re.compile(r"<@!?\d+>")
 BODY_DIR = Path(__file__).parent / "assets" / "bodies"
 SKIN_DIR = Path(__file__).parent / "assets" / "skincolors"
@@ -471,9 +472,12 @@ def load_mark_images() -> list[Path]:
 
 
 class BodyView(discord.ui.View):
-    def __init__(self, owner_id: int, images: list[Path]) -> None:
+    def __init__(
+        self, owner_id: int, images: list[Path], character_name: str = ""
+    ) -> None:
         super().__init__(timeout=600)
         self.owner_id = owner_id
+        self.character_name = character_name
         self.images = images
         self.index = 0
         self.step_images: dict[str, list[Path]] = {"shape": images}
@@ -518,6 +522,7 @@ class BodyView(discord.ui.View):
         if not shape_images:
             return None
         view = cls(owner_id, shape_images)
+        view.character_name = saved.get("character_name", "")
         view.selected_face = saved.get("selected_face")
         view.eye_color_id = int(saved.get("eye_color_id", 1))
         view.hair_color_id = int(saved.get("hair_color_id", 1))
@@ -633,6 +638,7 @@ class BodyView(discord.ui.View):
             self.owner_id,
             {
                 "stage": self.stage,
+                "character_name": self.character_name,
                 "selected_face": self.selected_face,
                 "step_indices": self.step_indices,
                 "steps": list(self.step_images),
@@ -1567,7 +1573,121 @@ class ResumeView(discord.ui.View):
     ) -> None:
         delete_progress(self.owner_id)
         await interaction.response.edit_message(
-            content="Do you want to start your farm?", view=StartView(self.owner_id)
+            content="It's time to make your character.", view=StartView(self.owner_id)
+        )
+        self.stop()
+
+
+class CharacterNameModal(discord.ui.Modal, title="Name your character"):
+    def __init__(
+        self,
+        owner_id: int,
+        start_message: discord.Message | None,
+        initial_name: str = "",
+        launch_portrait: bool = True,
+    ) -> None:
+        super().__init__()
+        self.owner_id = owner_id
+        self.start_message = start_message
+        self.launch_portrait = launch_portrait
+        self.name_input = discord.ui.TextInput(
+            label="Character name",
+            placeholder="Enter a name",
+            default=initial_name[:24] or None,
+            min_length=1,
+            max_length=24,
+        )
+        self.add_item(self.name_input)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        character_name = self.name_input.value.strip()
+        if not character_name:
+            await interaction.response.send_message(
+                "Enter a character name first.", ephemeral=True
+            )
+            return
+        await interaction.response.send_message(
+            f"Your character will be named **{character_name}**. Are you sure?",
+            view=ConfirmCharacterNameView(
+                self.owner_id,
+                character_name,
+                self.start_message,
+                self.launch_portrait,
+            ),
+            ephemeral=True,
+        )
+
+
+class ConfirmCharacterNameView(discord.ui.View):
+    def __init__(
+        self,
+        owner_id: int,
+        character_name: str,
+        start_message: discord.Message | None,
+        launch_portrait: bool = True,
+    ) -> None:
+        super().__init__(timeout=180)
+        self.owner_id = owner_id
+        self.character_name = character_name
+        self.start_message = start_message
+        self.launch_portrait = launch_portrait
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This name confirmation is not for you.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Yes", style=discord.ButtonStyle.success)
+    async def yes(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        if not self.launch_portrait:
+            saved = read_progress(self.owner_id) or {}
+            write_progress(
+                self.owner_id,
+                {**saved, "character_name": self.character_name},
+            )
+            await interaction.response.edit_message(
+                content=f"Name saved: {self.character_name}", view=None
+            )
+            self.stop()
+            return
+
+        images = load_body_images()
+        if not images:
+            await interaction.response.edit_message(
+                content="No body images found in assets/bodies.", view=None
+            )
+            return
+        await interaction.response.edit_message(
+            content=f"Name confirmed: {self.character_name}", view=None
+        )
+        self.stop()
+        view = BodyView(self.owner_id, images, self.character_name)
+        if self.start_message is None:
+            return
+        view.message = await self.start_message.edit(
+            content=None, attachments=[view.current()], view=view
+        )
+        colors = ColorView(self.owner_id, view)
+        colors.message = await view.message.reply("Colors", view=colors)
+        view.colors = colors
+        view.save_progress()
+
+    @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
+    async def no(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await interaction.response.send_modal(
+            CharacterNameModal(
+                self.owner_id,
+                self.start_message,
+                self.character_name,
+                self.launch_portrait,
+            )
         )
         self.stop()
 
@@ -1589,29 +1709,13 @@ class StartView(discord.ui.View):
     async def yes(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        await interaction.response.edit_message(
-            content="First we are going to create your character!", view=None
+        await interaction.response.send_modal(
+            CharacterNameModal(self.owner_id, interaction.message)
+        )
+        await interaction.message.edit(
+            content="Choose a name for your character in the pop-up.", view=None
         )
         self.stop()
-
-        await asyncio.sleep(3)
-
-        images = load_body_images()
-        if not images:
-            await interaction.message.edit(
-                content="No body images found in assets/bodies."
-            )
-            return
-        view = BodyView(self.owner_id, images)
-        file = view.current()
-        view.message = await interaction.message.edit(
-            content=None, attachments=[file], view=view
-        )
-
-        colors = ColorView(self.owner_id, view)
-        colors.message = await view.message.reply("Colors", view=colors)
-        view.colors = colors
-        view.save_progress()
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
     async def no(
@@ -1619,6 +1723,34 @@ class StartView(discord.ui.View):
     ) -> None:
         await interaction.response.edit_message(view=None)
         await interaction.message.reply("Okay, maybe later.")
+        self.stop()
+
+
+class SetCharacterNameView(discord.ui.View):
+    def __init__(self, owner_id: int) -> None:
+        super().__init__(timeout=180)
+        self.owner_id = owner_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This name prompt is not for you.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Choose name", style=discord.ButtonStyle.primary)
+    async def choose_name(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await interaction.response.send_modal(
+            CharacterNameModal(
+                self.owner_id,
+                None,
+                launch_portrait=False,
+            )
+        )
+        await interaction.message.edit(view=None)
         self.stop()
 
 
@@ -1644,6 +1776,44 @@ class FarmBot(discord.Client):
             if portrait_file is not None:
                 reply_args["file"] = portrait_file
             await message.reply(**reply_args)
+            return
+
+        if message.content.strip().lower() == "s.invtest":
+            saved = read_progress(message.author.id) or {}
+            portrait_path = (
+                Path(__file__).parent
+                / "data"
+                / "portraits"
+                / f"{message.author.id}.png"
+            )
+            if not portrait_path.is_file():
+                portrait_path = BODY_DIR / "1.png"
+            view = InventoryTestView(
+                message.author.id,
+                saved.get("character_name") or message.author.display_name,
+                int(saved.get("level", 1)),
+                int(saved.get("coins", 0)),
+                portrait_path,
+            )
+            await message.reply(
+                content=view.status,
+                file=discord.File(view.render(), filename="inventory_test.png"),
+                view=view,
+            )
+            return
+
+        if message.content.strip().lower() == "s!name":
+            saved = read_progress(message.author.id) or {}
+            existing_name = saved.get("character_name", "").strip()
+            if existing_name:
+                await message.reply(
+                    f"You already chose the name {existing_name}."
+                )
+                return
+            await message.reply(
+                "Choose a name for your character.",
+                view=SetCharacterNameView(message.author.id),
+            )
             return
 
         if message.content.strip().lower() == "p!test":
@@ -1702,5 +1872,6 @@ class FarmBot(discord.Client):
                 )
                 return
             await message.reply(
-                "Do you want to start your farm?", view=StartView(message.author.id)
+                "It's time to make your character.",
+                view=StartView(message.author.id),
             )
