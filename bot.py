@@ -315,31 +315,72 @@ def render_eye_preview(
 
 
 def render_farm_picker() -> io.BytesIO:
-    # Left column holds farms 1-4, right column farms 5-8, name under each image.
-    cell, pad, label_height = 192, 24, 40
-    font = ImageFont.load_default(size=24)
-    width = pad + 2 * (cell + pad)
-    height = pad + 4 * (cell + label_height + pad)
-    sheet = Image.new("RGBA", (width, height), (47, 49, 54, 255))
+    cell_width, cell_height = 340, 220
+    outer = 24
+    gap_x, gap_y = 18, 14
+    header_height = 82
+    width = outer * 2 + cell_width * 2 + gap_x
+    height = outer * 2 + header_height + cell_height * 4 + gap_y * 3
+    sheet = Image.new("RGBA", (width, height), (51, 112, 150, 255))
     draw = ImageDraw.Draw(sheet)
+    draw.rectangle((0, int(height * 0.76), width, height), fill=(79, 138, 77, 255))
+    draw.rectangle((0, int(height * 0.76), width, int(height * 0.76) + 10), fill=(112, 174, 92, 255))
+    draw.rounded_rectangle(
+        (10, 10, width - 10, height - 10),
+        radius=14,
+        fill=(104, 68, 43, 255),
+        outline=(236, 170, 78, 255),
+        width=6,
+    )
+    draw.rounded_rectangle(
+        (outer - 8, outer - 8, width - outer + 8, height - outer + 8),
+        radius=10,
+        fill=(246, 214, 167, 255),
+        outline=(255, 237, 200, 255),
+        width=4,
+    )
+    title_font = ImageFont.load_default(size=34)
+    title = "Choose Your Farm"
+    title_width = draw.textlength(title, font=title_font)
+    draw.text(
+        ((width - title_width) / 2, outer + 8),
+        title,
+        font=title_font,
+        fill=(102, 57, 45, 255),
+        stroke_width=1,
+        stroke_fill=(255, 237, 200, 255),
+    )
+    label_font = ImageFont.load_default(size=20)
     for index, name in enumerate(FARMS):
         farm = Image.open(FARMS_DIR / f"{index + 1}.png").convert("RGBA")
-        scale = max(1, cell // max(farm.size))
-        farm = farm.resize(
-            (farm.width * scale, farm.height * scale), Image.Resampling.NEAREST
-        )
         column, row = divmod(index, 4)
-        left = pad + column * (cell + pad)
-        top = pad + row * (cell + label_height + pad)
-        sheet.alpha_composite(
-            farm, (left + (cell - farm.width) // 2, top + (cell - farm.height) // 2)
+        left = outer + column * (cell_width + gap_x)
+        top = outer + header_height + row * (cell_height + gap_y)
+        draw.rounded_rectangle(
+            (left, top, left + cell_width, top + cell_height),
+            radius=8,
+            fill=(183, 120, 70, 255),
+            outline=(128, 77, 48, 255),
+            width=4,
         )
-        text_width = draw.textlength(name, font=font)
+        draw.rectangle(
+            (left + 7, top + 7, left + cell_width - 7, top + cell_height - 7),
+            fill=(248, 209, 151, 255),
+            outline=(255, 235, 191, 255),
+            width=2,
+        )
+        scale = 3
+        farm = farm.resize((farm.width * scale, farm.height * scale), Image.Resampling.NEAREST)
+        sheet.alpha_composite(
+            farm,
+            (left + (cell_width - farm.width) // 2, top + 5),
+        )
+        text_width = draw.textlength(name, font=label_font)
         draw.text(
-            (left + (cell - text_width) / 2, top + cell + 6),
+            (left + (cell_width - text_width) / 2, top + 187),
             name,
-            font=font,
-            fill=(255, 255, 255, 255),
+            font=label_font,
+            fill=(90, 53, 42, 255),
         )
     output = io.BytesIO()
     sheet.save(output, format="PNG")
