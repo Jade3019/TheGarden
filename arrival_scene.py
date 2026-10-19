@@ -169,19 +169,15 @@ def dialogue_scene(
             red, green, blue, alpha = portrait_pixels[x, y]
             if (
                 not alpha
-                or min(red, green, blue) < 240
-                or max(red, green, blue) - min(red, green, blue) > 18
+                or min(red, green, blue) < 235
+                or max(red, green, blue) - min(red, green, blue) > 35
             ):
                 continue
             portrait_pixels[x, y] = (red, green, blue, 0)
-            if x > 0:
-                edge_white.append((x - 1, y))
-            if x + 1 < portrait.width:
-                edge_white.append((x + 1, y))
-            if y > 0:
-                edge_white.append((x, y - 1))
-            if y + 1 < portrait.height:
-                edge_white.append((x, y + 1))
+            for neighbor_y in range(max(0, y - 1), min(portrait.height, y + 2)):
+                for neighbor_x in range(max(0, x - 1), min(portrait.width, x + 2)):
+                    if neighbor_x != x or neighbor_y != y:
+                        edge_white.append((neighbor_x, neighbor_y))
         portrait = portrait.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
         bounds = portrait.getchannel("A").getbbox()
         if bounds is not None:
