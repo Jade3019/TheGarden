@@ -115,7 +115,10 @@ def arrival_scene(reveal: float | None = None) -> io.BytesIO:
 
 
 async def play_arrival(
-    message: discord.Message, picker_image: Image.Image, step_delay: float = 1.0
+    message: discord.Message,
+    picker_image: Image.Image,
+    step_delay: float = 1.0,
+    completion_view: discord.ui.View | None = None,
 ) -> None:
     def attachment(data: io.BytesIO) -> list[discord.File]:
         return [discord.File(data, filename="scene.png")]
@@ -134,5 +137,8 @@ async def play_arrival(
     await message.edit(attachments=attachment(arrival_scene()))
     await asyncio.sleep(step_delay)
     for reveal in (0.25, 0.5, 0.75, 1.0):
-        await message.edit(attachments=attachment(arrival_scene(reveal)))
+        await message.edit(
+            attachments=attachment(arrival_scene(reveal)),
+            view=completion_view if reveal == 1.0 else None,
+        )
         await asyncio.sleep(step_delay * 0.5)

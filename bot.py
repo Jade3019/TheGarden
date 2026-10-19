@@ -1485,6 +1485,40 @@ class FarmButton(discord.ui.Button):
             )
 
 
+class ArrivalContinueView(discord.ui.View):
+    def __init__(self, owner_id: int) -> None:
+        super().__init__(timeout=600)
+        self.owner_id = owner_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This arrival scene belongs to someone else.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Continue", style=discord.ButtonStyle.success)
+    async def continue_arrival(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        saved = read_progress(self.owner_id) or {}
+        pending_farm = saved.pop("pending_farm", None)
+        if pending_farm is None:
+            await interaction.response.edit_message(
+                content="Your farm choice is no longer available.", view=None
+            )
+            self.stop()
+            return
+        saved["farm"] = pending_farm
+        saved["phase"] = "arrived"
+        write_progress(self.owner_id, saved)
+        await interaction.response.edit_message(
+            content="Your farm is ready.", view=None
+        )
+        self.stop()
+
+
 class ConfirmFarmView(discord.ui.View):
     def __init__(
         self, owner_id: int, farm_name: str, picker: discord.Message
@@ -1515,12 +1549,10 @@ class ConfirmFarmView(discord.ui.View):
         await interaction.response.defer()
         await interaction.message.delete()
         self.stop()
-        await play_arrival(self.picker, Image.open(render_farm_picker()))
-        saved = read_progress(self.owner_id) or {}
-        pending_farm = saved.pop("pending_farm", self.farm_name)
-        write_progress(
-            self.owner_id,
-            {**saved, "farm": pending_farm, "phase": "arrived"},
+        await play_arrival(
+            self.picker,
+            Image.open(render_farm_picker()),
+            completion_view=ArrivalContinueView(self.owner_id),
         )
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
@@ -2100,7 +2132,6 @@ class MainMenuView(discord.ui.View):
                 return
             if saved.get("phase") == "arrival":
                 saved.pop("farm", None)
-                saved.pop("pending_farm", None)
                 write_progress(self.owner_id, saved)
                 await interaction.response.edit_message(
                     content="Now it's time to choose your farm!",
