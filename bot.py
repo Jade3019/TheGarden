@@ -1538,7 +1538,9 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
 
     brows = load_brow_images()
     brow_path = body.selected_brow_image
-    if expression == "sad" and len(brows) > 6:
+    if expression == "happy":
+        brow_path = None
+    elif expression == "sad" and len(brows) > 6:
         brow_path = brows[6]
     portrait_file = render_eye_preview(
         body.selected_skin_image,
