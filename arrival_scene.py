@@ -157,30 +157,31 @@ def dialogue_scene(
             portrait = player_portrait.convert("RGBA")
         else:
             portrait = Image.open(player_portrait).convert("RGBA")
-        portrait_draw = ImageDraw.Draw(portrait)
-        transparent_white = (255, 255, 255, 0)
-        edge_points = (
-            [(x, 0) for x in range(portrait.width)]
-            + [(x, portrait.height - 1) for x in range(portrait.width)]
-            + [(0, y) for y in range(portrait.height)]
-            + [(portrait.width - 1, y) for y in range(portrait.height)]
-        )
-        for point in edge_points:
-            red, green, blue, alpha = portrait.getpixel(point)
-            if alpha and red >= 245 and green >= 245 and blue >= 245:
-                ImageDraw.floodfill(portrait, point, transparent_white, thresh=10)
+        portrait_pixels = portrait.load()
+        for y in range(portrait.height):
+            for x in range(portrait.width):
+                red, green, blue, alpha = portrait_pixels[x, y]
+                if (
+                    alpha
+                    and min(red, green, blue) >= 240
+                    and max(red, green, blue) - min(red, green, blue) <= 18
+                ):
+                    portrait_pixels[x, y] = (red, green, blue, 0)
         portrait = portrait.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
         bounds = portrait.getchannel("A").getbbox()
         if bounds is not None:
             portrait = portrait.crop(bounds)
-            target_height = 190
+            target_height = 256
             target_width = round(portrait.width * target_height / portrait.height)
             portrait = portrait.resize(
                 (target_width, target_height), Image.Resampling.NEAREST
             )
             scene.alpha_composite(
                 portrait,
-                (scene.width - target_width - 24, frame_top - target_height),
+                (
+                    scene.width - target_width - 24,
+                    frame_top + solid_row - target_height,
+                ),
             )
 
     if reveal is not None:
@@ -240,11 +241,7 @@ async def play_arrival(
             )
             await asyncio.sleep(step_delay)
     await asyncio.sleep(step_delay * 3)
-    await message.edit(attachments=attachment(arrival_scene()))
-    await asyncio.sleep(step_delay)
-    for reveal in (0.25, 0.5, 0.75, 1.0):
-        await message.edit(
-            attachments=attachment(arrival_scene(reveal)),
-            view=completion_view if reveal == 1.0 else None,
-        )
-        await asyncio.sleep(step_delay * 0.15)
+    await message.edit(
+        attachments=attachment(arrival_scene()),
+        view=completion_view,
+    )

@@ -335,7 +335,14 @@ def render_eye_preview(
     if mouth_path is not None:
         mouth = Image.open(mouth_path).convert("RGBA")
         if mouth_flip_vertical:
-            mouth = mouth.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+            mouth_bounds = mouth.getchannel("A").getbbox()
+            if mouth_bounds is not None:
+                flipped_mouth = Image.new("RGBA", mouth.size, (0, 0, 0, 0))
+                flipped_mouth.alpha_composite(
+                    mouth.crop(mouth_bounds).transpose(Image.Transpose.FLIP_TOP_BOTTOM),
+                    mouth_bounds[:2],
+                )
+                mouth = flipped_mouth
         mouth = mouth.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(mouth)
     for mark_path in (mark1_top_path, mark2_top_path):
@@ -1503,7 +1510,7 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
     saved = read_progress(owner_id) or {}
     body = BodyView.restore(owner_id, saved)
     mouths = load_mouth_images()
-    mouth_index = {"happy": 4, "sad": 4}.get(expression)
+    mouth_index = {"happy": 10, "sad": 4}.get(expression)
     if (
         body is None
         or body.selected_skin_image is None
@@ -1514,7 +1521,12 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
         raise FileNotFoundError("The saved profile cannot be rendered with this expression.")
 
     brows = load_brow_images()
-    brow_path = brows[6] if expression == "sad" and len(brows) > 6 else body.selected_brow_image
+    brow_index = {"happy": 1, "sad": 6}.get(expression)
+    brow_path = (
+        brows[brow_index]
+        if brow_index is not None and len(brows) > brow_index
+        else body.selected_brow_image
+    )
     portrait_file = render_eye_preview(
         body.selected_skin_image,
         body.selected_eye_image,
