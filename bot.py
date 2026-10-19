@@ -1529,24 +1529,25 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
     ):
         raise FileNotFoundError("The saved profile cannot be rendered with this expression.")
 
+    eye_path = body.selected_eye_image
     mouth_path = body.selected_mouth_image
     if expression == "happy":
         mouth_path = HAPPY_SMILE_IMAGE
-    elif expression == "sad" and mouth_path is None:
-        if not mouths:
-            raise FileNotFoundError("The saved profile mouth asset is missing.")
-        mouth_index = min(body.step_indices.get("mouth", 0), len(mouths) - 1)
-        mouth_path = mouths[mouth_index]
+    elif expression == "sad":
+        eye_path = EYES_DIR / "10.eyeskin1.png"
+        if not eye_path.is_file():
+            raise FileNotFoundError(f"Sad expression eye asset is missing: {eye_path}")
+        sad_mouth_index = 4
+        if len(mouths) <= sad_mouth_index:
+            raise FileNotFoundError("The sad expression mouth asset is missing.")
+        mouth_path = mouths[sad_mouth_index]
 
-    brows = load_brow_images()
     brow_path = body.selected_brow_image
-    if expression == "happy":
+    if expression in {"happy", "sad"}:
         brow_path = None
-    elif expression == "sad" and len(brows) > 6:
-        brow_path = brows[6]
     portrait_file = render_eye_preview(
         body.selected_skin_image,
-        body.selected_eye_image,
+        eye_path,
         body.eye_color_id,
         brow_path=brow_path,
         nose_path=body.selected_nose_image,
@@ -1561,6 +1562,7 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
         mark2_bottom_path=body.selected_mark2_bottom_image,
         shirt_path=SHIRT_IMAGE if "shirt" in body.step_images else None,
         shirt_color_id=body.shirt_color_id,
+        mouth_flip_vertical=expression == "sad",
         closed_eyes=expression == "happy",
     )
     with Image.open(portrait_file) as source:
