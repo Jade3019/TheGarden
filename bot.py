@@ -1507,16 +1507,21 @@ class ConfirmFarmView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         saved = read_progress(self.owner_id) or {}
+        saved.pop("farm", None)
         write_progress(
             self.owner_id,
-            {**saved, "farm": self.farm_name, "phase": "arrival"},
+            {**saved, "pending_farm": self.farm_name, "phase": "arrival"},
         )
         await interaction.response.defer()
         await interaction.message.delete()
         self.stop()
         await play_arrival(self.picker, Image.open(render_farm_picker()))
         saved = read_progress(self.owner_id) or {}
-        write_progress(self.owner_id, {**saved, "phase": "arrived"})
+        pending_farm = saved.pop("pending_farm", self.farm_name)
+        write_progress(
+            self.owner_id,
+            {**saved, "farm": pending_farm, "phase": "arrived"},
+        )
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
     async def no(
@@ -2094,6 +2099,9 @@ class MainMenuView(discord.ui.View):
                 )
                 return
             if saved.get("phase") == "arrival":
+                saved.pop("farm", None)
+                saved.pop("pending_farm", None)
+                write_progress(self.owner_id, saved)
                 await interaction.response.edit_message(
                     content="Now it's time to choose your farm!",
                     attachments=[],
