@@ -1,5 +1,6 @@
 import asyncio
 import io
+from collections import deque
 from pathlib import Path
 
 import discord
@@ -158,15 +159,29 @@ def dialogue_scene(
         else:
             portrait = Image.open(player_portrait).convert("RGBA")
         portrait_pixels = portrait.load()
-        for y in range(portrait.height):
-            for x in range(portrait.width):
-                red, green, blue, alpha = portrait_pixels[x, y]
-                if (
-                    alpha
-                    and min(red, green, blue) >= 240
-                    and max(red, green, blue) - min(red, green, blue) <= 18
-                ):
-                    portrait_pixels[x, y] = (red, green, blue, 0)
+        edge_white: deque[tuple[int, int]] = deque()
+        for x in range(portrait.width):
+            edge_white.extend(((x, 0), (x, portrait.height - 1)))
+        for y in range(1, portrait.height - 1):
+            edge_white.extend(((0, y), (portrait.width - 1, y)))
+        while edge_white:
+            x, y = edge_white.popleft()
+            red, green, blue, alpha = portrait_pixels[x, y]
+            if (
+                not alpha
+                or min(red, green, blue) < 240
+                or max(red, green, blue) - min(red, green, blue) > 18
+            ):
+                continue
+            portrait_pixels[x, y] = (red, green, blue, 0)
+            if x > 0:
+                edge_white.append((x - 1, y))
+            if x + 1 < portrait.width:
+                edge_white.append((x + 1, y))
+            if y > 0:
+                edge_white.append((x, y - 1))
+            if y + 1 < portrait.height:
+                edge_white.append((x, y + 1))
         portrait = portrait.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
         bounds = portrait.getchannel("A").getbbox()
         if bounds is not None:
