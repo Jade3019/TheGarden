@@ -12,6 +12,7 @@ from arrival_scene import (
     JOURNEY_QUESTION,
     HAPPY_LEWIS,
     NORMAL_LEWIS,
+    SAD_LEWIS,
     dialogue_scene,
     play_arrival,
     play_farm_reveal,
@@ -1873,6 +1874,58 @@ class JourneyLewisReplyView(discord.ui.View):
         write_progress(self.owner_id, saved)
         await interaction.response.defer()
         await play_farm_reveal(interaction.message, dialogue_image, farm_image)
+        await asyncio.sleep(1)
+        announcement = dialogue_scene(
+            "This is your new farm!",
+            lewis_image=HAPPY_LEWIS,
+            background_image=farm_image,
+        )
+        await interaction.message.edit(
+            content=None,
+            attachments=[discord.File(announcement, filename="scene.png")],
+            view=FarmAnnouncementContinueView(self.owner_id, pending_farm),
+        )
+        self.stop()
+
+
+class FarmAnnouncementContinueView(discord.ui.View):
+    def __init__(self, owner_id: int, farm_name: str) -> None:
+        super().__init__(timeout=600)
+        self.owner_id = owner_id
+        self.farm_name = farm_name
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This arrival scene belongs to someone else.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Continue", style=discord.ButtonStyle.success)
+    async def continue_announcement(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        farm_image_path = FARM_SCENE_IMAGES.get(self.farm_name)
+        if farm_image_path is None or not farm_image_path.is_file():
+            await interaction.response.edit_message(
+                content="The image for your selected farm is unavailable.", view=None
+            )
+            self.stop()
+            return
+
+        with Image.open(farm_image_path) as source:
+            farm_image = source.convert("RGB")
+        dialogue = dialogue_scene(
+            "It's a bit of a mess after your grandpa died.",
+            lewis_image=SAD_LEWIS,
+            background_image=farm_image,
+        )
+        await interaction.response.edit_message(
+            content=None,
+            attachments=[discord.File(dialogue, filename="scene.png")],
+            view=None,
+        )
         self.stop()
 
 

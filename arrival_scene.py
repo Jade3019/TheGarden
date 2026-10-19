@@ -36,6 +36,7 @@ GLYPHS = {
     "z": ("00000", "00000", "11111", "00010", "00100", "01000", "11111"),
     "I": ("01110", "00100", "00100", "00100", "00100", "00100", "01110"),
     "O": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
+    "T": ("11111", "00100", "00100", "00100", "00100", "00100", "00100"),
     "W": ("10001", "10001", "10001", "10101", "10101", "10101", "01010"),
     "'": ("00100", "00100", "00000", "00000", "00000", "00000", "00000"),
     "a": ("00000", "00000", "01110", "00001", "01111", "10001", "01111"),
@@ -136,8 +137,18 @@ def dialogue_scene(
     player_portrait: Path | Image.Image | None = None,
     reveal: float | None = None,
     scale: int = 4,
+    background_image: Path | Image.Image | None = None,
 ) -> io.BytesIO:
-    scene = Image.open(BUS_STOP_IMAGE).convert("RGBA")
+    with Image.open(BUS_STOP_IMAGE) as bus_stop:
+        base_width = bus_stop.width
+        if background_image is None:
+            scene = bus_stop.convert("RGBA")
+        elif isinstance(background_image, Image.Image):
+            scene = background_image.convert("RGBA")
+        else:
+            with Image.open(background_image) as source:
+                scene = source.convert("RGBA")
+    layout_scale = scene.width / base_width
     frame = Image.open(DIALOGUE_FRAME).convert("RGBA")
     frame_height = round(frame.height * scene.width / frame.width)
     frame = frame.resize((scene.width, frame_height), Image.Resampling.NEAREST)
@@ -154,9 +165,18 @@ def dialogue_scene(
 
     if lewis_image is not None:
         lewis = Image.open(lewis_image).convert("RGBA")
-        lewis = lewis.resize((lewis.width * 2, lewis.height * 2), Image.Resampling.NEAREST)
+        lewis = lewis.resize(
+            (
+                round(lewis.width * 2 * layout_scale),
+                round(lewis.height * 2 * layout_scale),
+            ),
+            Image.Resampling.NEAREST,
+        )
         lewis = lewis.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-        scene.alpha_composite(lewis, (40, frame_top + solid_row - lewis.height))
+        scene.alpha_composite(
+            lewis,
+            (round(40 * layout_scale), frame_top + solid_row - lewis.height),
+        )
 
     if player_portrait is not None:
         if isinstance(player_portrait, Image.Image):
@@ -187,7 +207,7 @@ def dialogue_scene(
         bounds = portrait.getchannel("A").getbbox()
         if bounds is not None:
             portrait = portrait.crop(bounds)
-            target_height = 256
+            target_height = round(256 * layout_scale)
             target_width = round(portrait.width * target_height / portrait.height)
             portrait = portrait.resize(
                 (target_width, target_height), Image.Resampling.NEAREST
@@ -195,40 +215,47 @@ def dialogue_scene(
             scene.alpha_composite(
                 portrait,
                 (
-                    scene.width - target_width - 24,
+                    scene.width - target_width - round(24 * layout_scale),
                     frame_top + solid_row - target_height,
                 ),
             )
 
+    scaled_text_x = round(TEXT_X * layout_scale)
+    scaled_scale = max(1, round(scale * layout_scale))
+    scaled_text_margin = round(44 * layout_scale)
     if reveal is not None:
         text_layer = Image.new("RGBA", scene.size, (0, 0, 0, 0))
-        text_top = frame_top + 44
+        text_top = frame_top + round(44 * layout_scale)
         _draw_wrapped_text(
             text_layer,
             text,
-            TEXT_X,
+            scaled_text_x,
             text_top,
-            TEXT_SCALE,
-            scene.width - TEXT_X - 44,
+            max(1, round(TEXT_SCALE * layout_scale)),
+            scene.width - scaled_text_x - scaled_text_margin,
         )
-        text_width = _text_width(text, TEXT_SCALE)
-        front = TEXT_X + (text_width + REVEAL_EDGE) * reveal
+        text_width = _text_width(text, max(1, round(TEXT_SCALE * layout_scale)))
+        reveal_edge = round(REVEAL_EDGE * layout_scale)
+        front = scaled_text_x + (text_width + reveal_edge) * reveal
         mask = Image.new("L", scene.size, 0)
         mask_draw = ImageDraw.Draw(mask)
-        for x in range(TEXT_X, min(scene.width, TEXT_X + text_width + 1)):
-            strength = max(0.0, min(1.0, (front - x) / REVEAL_EDGE))
-            mask_draw.line((x, text_top, x, text_top + 8 * TEXT_SCALE), fill=round(strength * 255))
+        for x in range(scaled_text_x, min(scene.width, scaled_text_x + text_width + 1)):
+            strength = max(0.0, min(1.0, (front - x) / reveal_edge))
+            mask_draw.line(
+                (x, text_top, x, text_top + 8 * round(TEXT_SCALE * layout_scale)),
+                fill=round(strength * 255),
+            )
         text_layer.putalpha(ImageChops.multiply(text_layer.getchannel("A"), mask))
         scene.alpha_composite(text_layer)
     else:
-        text_top = frame_top + (28 if "\n" in text else 44)
+        text_top = frame_top + round((28 if "\n" in text else 44) * layout_scale)
         _draw_wrapped_text(
             scene,
             text,
-            TEXT_X,
+            scaled_text_x,
             text_top,
-            scale,
-            scene.width - TEXT_X - 44,
+            scaled_scale,
+            scene.width - scaled_text_x - scaled_text_margin,
         )
     return _to_bytes(scene)
 
