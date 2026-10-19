@@ -10,7 +10,9 @@ from PIL import Image, ImageDraw, ImageFont
 from arrival_scene import (
     JOURNEY_CHOICES,
     JOURNEY_QUESTION,
+    HAPPY_LEWIS,
     NORMAL_LEWIS,
+    SAD_LEWIS,
     dialogue_scene,
     play_arrival,
 )
@@ -1641,26 +1643,29 @@ class JourneyResponseView(discord.ui.View):
         return True
 
     async def choose_response(
-        self, interaction: discord.Interaction, response: str, expression: str
+        self,
+        interaction: discord.Interaction,
+        response: str,
+        expression: str,
+        lewis_reply: str,
+        lewis_expression: str,
     ) -> None:
         saved = read_progress(self.owner_id) or {}
-        pending_farm = saved.pop("pending_farm", None)
-        if pending_farm is None:
+        if saved.get("pending_farm") is None:
             await interaction.response.edit_message(
                 content="Your farm choice is no longer available.", view=None
             )
             self.stop()
             return
-
         portrait = render_profile_portrait(self.owner_id, expression)
         scene = dialogue_scene(response, player_portrait=portrait)
-        saved["farm"] = pending_farm
-        saved["phase"] = "arrived"
-        write_progress(self.owner_id, saved)
+        scene = dialogue_scene(response, player_portrait=portrait)
         await interaction.response.edit_message(
             content=None,
             attachments=[discord.File(scene, filename="scene.png")],
-            view=None,
+            view=JourneyLewisReplyView(
+                self.owner_id, lewis_reply, lewis_expression
+            ),
         )
         self.stop()
 
@@ -1668,7 +1673,13 @@ class JourneyResponseView(discord.ui.View):
     async def alright(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        await self.choose_response(interaction, "It went alright", "normal")
+        await self.choose_response(
+            interaction,
+            "It went alright",
+            "normal",
+            "It could be worse, should we get started?",
+            "normal",
+        )
 
     @discord.ui.button(
         label="2. it went amazing, i cant wait to get started.",
@@ -1682,13 +1693,66 @@ class JourneyResponseView(discord.ui.View):
             interaction,
             "it went amazing, i cant wait to get started.",
             "happy",
+            "I'm glad to hear you're so eager to start.",
+            "happy",
         )
 
     @discord.ui.button(label="3. it went horrible.", style=discord.ButtonStyle.secondary, row=2)
     async def horrible(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        await self.choose_response(interaction, "it went horrible.", "sad")
+        await self.choose_response(
+            interaction,
+            "it went horrible.",
+            "sad",
+            "Oh, I'm sorry to hear. We should get started.",
+            "sad",
+        )
+
+
+class JourneyLewisReplyView(discord.ui.View):
+    def __init__(self, owner_id: int, reply: str, expression: str) -> None:
+        super().__init__(timeout=600)
+        self.owner_id = owner_id
+        self.reply = reply
+        self.expression = expression
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This arrival scene belongs to someone else.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Continue", style=discord.ButtonStyle.success)
+    async def continue_reply(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        saved = read_progress(self.owner_id) or {}
+        pending_farm = saved.pop("pending_farm", None)
+        if pending_farm is None:
+            await interaction.response.edit_message(
+                content="Your farm choice is no longer available.", view=None
+            )
+            self.stop()
+            return
+
+        lewis_image = {
+            "normal": NORMAL_LEWIS,
+            "happy": HAPPY_LEWIS,
+            "sad": SAD_LEWIS,
+        }[self.expression]
+        scene = dialogue_scene(self.reply, lewis_image=lewis_image)
+        saved["farm"] = pending_farm
+        saved["phase"] = "arrived"
+        write_progress(self.owner_id, saved)
+        await interaction.response.edit_message(
+            content=None,
+            attachments=[discord.File(scene, filename="scene.png")],
+            view=None,
+        )
+        self.stop()
 
 
 class ConfirmFarmView(discord.ui.View):
