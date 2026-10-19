@@ -129,10 +129,12 @@ SHIRT_IMAGE = Path(__file__).parent / "assets" / "shirt" / "shirt.png"
 HAPPY_CLOSED_EYES_IMAGE = Path(__file__).parent / "assets" / "expressions" / "happy_closed_eyes.png"
 HAPPY_SMILE_IMAGE = Path(__file__).parent / "assets" / "expressions" / "happy_smile.png"
 SAD_EYES_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_eyes.png"
+SAD_BROWS_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_brows.png"
 SAD_LIPS_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_lips.png"
 SAD_PURPLE_LIPS_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_purple_lips.png"
 SAD_IRIS_COLOR_INDEX = {
     (12, 62, 33): 0,
+    (35, 75, 37): 0,
     (30, 124, 70): 1,
     (81, 194, 133): 2,
 }
@@ -218,6 +220,35 @@ def recolor_mark_layer(
     return layer
 
 
+def recolor_sad_brow_layer(
+    path: Path, skin_shade_map: dict[tuple[int, int, int], tuple[int, int, int]]
+) -> Image.Image:
+    layer = Image.open(path).convert("RGBA")
+    target_shades = {
+        (239, 85, 33): skin_shade_map.get((255, 135, 110), (255, 135, 110)),
+        (254, 116, 35): skin_shade_map.get((255, 170, 128), (255, 170, 128)),
+    }
+    pixels = layer.load()
+    for y in range(layer.height):
+        for x in range(layer.width):
+            red, green, blue, alpha = pixels[x, y]
+            replacement = target_shades.get((red, green, blue))
+            if replacement is not None:
+                pixels[x, y] = (*replacement, alpha)
+    return layer
+
+
+def compensate_for_dialogue_flip(layer: Image.Image) -> Image.Image:
+    bounds = layer.getchannel("A").getbbox()
+    if bounds is None:
+        return layer
+    mirrored = layer.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    horizontal_offset = bounds[0] - (layer.width - bounds[2])
+    result = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    result.alpha_composite(mirrored, (horizontal_offset, 0))
+    return result
+
+
 def recolor_shirt_layer(
     path: Path,
     color_id: int,
@@ -261,6 +292,7 @@ def render_eye_preview(
     shirt_color_id: int = 1,
     mouth_flip_vertical: bool = False,
     closed_eyes: bool = False,
+    compensate_brow_dialogue_flip: bool = False,
 ) -> io.BytesIO:
     skin = Image.open(skin_path).convert("RGBA")
     eyes = Image.open(eye_path).convert("RGBA")
@@ -345,8 +377,12 @@ def render_eye_preview(
         for x in range(eye_overlay.width):
             for y in range(eye_overlay.height):
                 red, green, blue, alpha = eye_overlay_pixels[x, y]
-                shade_index = SAD_IRIS_COLOR_INDEX.get((red, green, blue))
-                if shade_index is not None:
+                source_color = (red, green, blue)
+                skin_color = skin_shade_map.get(source_color)
+                shade_index = SAD_IRIS_COLOR_INDEX.get(source_color)
+                if skin_color is not None:
+                    eye_overlay_pixels[x, y] = (*skin_color, alpha)
+                elif shade_index is not None:
                     target_shade = target_shades[shade_index]
                     eye_overlay_pixels[x, y] = (*target_shade, alpha)
         sad_eye_overlay = eye_overlay
@@ -397,6 +433,12 @@ def render_eye_preview(
         skin.alpha_composite(bangs_top)
     if sad_eye_overlay is not None:
         skin.alpha_composite(sad_eye_overlay)
+        if brow_path is not None:
+            brows = recolor_sad_brow_layer(brow_path, skin_shade_map)
+            brows = brows.resize(skin.size, Image.Resampling.NEAREST)
+            if compensate_brow_dialogue_flip:
+                brows = compensate_for_dialogue_flip(brows)
+            skin.alpha_composite(brows)
 
     output = io.BytesIO()
     skin.save(output, format="PNG")
@@ -1576,7 +1618,7 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
     if expression == "happy":
         brow_path = None
     elif expression == "sad":
-        brow_path = None
+        brow_path = SAD_BROWS_IMAGE
     portrait_file = render_eye_preview(
         body.selected_skin_image,
         eye_path,
@@ -1596,6 +1638,7 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
         shirt_path=SHIRT_IMAGE if "shirt" in body.step_images else None,
         shirt_color_id=body.shirt_color_id,
         closed_eyes=expression == "happy",
+        compensate_brow_dialogue_flip=expression == "sad",
     )
     with Image.open(portrait_file) as source:
         return source.convert("RGBA")
