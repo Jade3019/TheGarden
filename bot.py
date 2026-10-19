@@ -247,6 +247,7 @@ def render_eye_preview(
     shirt_path: Path | None = None,
     shirt_color_id: int = 1,
     mouth_flip_vertical: bool = False,
+    closed_eyes: bool = False,
 ) -> io.BytesIO:
     skin = Image.open(skin_path).convert("RGBA")
     eyes = Image.open(eye_path).convert("RGBA")
@@ -314,11 +315,65 @@ def render_eye_preview(
     skin_pixels = skin.load()
     eye_pixels = eyes.load()
     reference_pixels = eye_reference.load()
+    eye_columns: set[int] = set()
     for y in range(85, min(146, skin.height)):
         for x in range(skin.width):
             eye_pixel = eye_pixels[x, y]
             if eye_pixel != reference_pixels[x, y]:
-                skin_pixels[x, y] = shade_map.get(eye_pixel, eye_pixel)
+                if closed_eyes:
+                    eye_columns.add(x)
+                else:
+                    skin_pixels[x, y] = shade_map.get(eye_pixel, eye_pixel)
+    if closed_eyes and eye_columns:
+        groups: list[list[int]] = []
+        for x in sorted(eye_columns):
+            if not groups or x > groups[-1][-1] + 5:
+                groups.append([x])
+            else:
+                groups[-1].append(x)
+
+        eyelid_draw = ImageDraw.Draw(skin)
+        eyelid_color = (77, 31, 48)
+        if brow_path is not None:
+            with Image.open(brow_path) as brow_image:
+                brow_pixels = brow_image.convert("RGBA")
+                opaque_brow_pixels = [
+                    pixel[:3] for pixel in brow_pixels.getdata() if pixel[3] > 0
+                ]
+            if opaque_brow_pixels:
+                eyelid_color = min(
+                    opaque_brow_pixels, key=lambda color: sum(color)
+                )
+        for group in groups:
+            left, right = group[0], group[-1]
+            middle = (left + right) // 2
+            eye_top = min(
+                y
+                for y in range(85, min(146, skin.height))
+                if any(eye_pixels[x, y] != reference_pixels[x, y] for x in group)
+            )
+            lid_y = eye_top + 14
+            eyelid_draw.line(
+                (
+                    (left, lid_y + 4),
+                    (left + (middle - left) // 2, lid_y),
+                    (middle, lid_y - 5),
+                    (middle + (right - middle) // 2, lid_y),
+                    (right, lid_y + 4),
+                ),
+                fill=eyelid_color,
+                width=5,
+            )
+            eyelid_draw.line(
+                ((left + 1, lid_y + 3), (left - 3, lid_y - 3)),
+                fill=eyelid_color,
+                width=3,
+            )
+            eyelid_draw.line(
+                ((right - 1, lid_y + 3), (right + 3, lid_y - 3)),
+                fill=eyelid_color,
+                width=3,
+            )
 
     if shirt_path is not None:
         shirt = recolor_shirt_layer(shirt_path, shirt_color_id, skin_shade_map)
@@ -1521,17 +1576,11 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
         raise FileNotFoundError("The saved profile cannot be rendered with this expression.")
 
     brows = load_brow_images()
-    brow_index = {"happy": 2, "sad": 6}.get(expression)
-    brow_path = (
-        brows[brow_index]
-        if brow_index is not None and len(brows) > brow_index
-        else body.selected_brow_image
-    )
     portrait_file = render_eye_preview(
         body.selected_skin_image,
         body.selected_eye_image,
         body.eye_color_id,
-        brow_path=brow_path,
+        brow_path=body.selected_brow_image,
         nose_path=body.selected_nose_image,
         mouth_path=mouths[mouth_index],
         hair_path=body.selected_hair_image,
@@ -1545,6 +1594,7 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
         shirt_path=SHIRT_IMAGE if "shirt" in body.step_images else None,
         shirt_color_id=body.shirt_color_id,
         mouth_flip_vertical=expression == "sad",
+        closed_eyes=expression == "happy",
     )
     with Image.open(portrait_file) as source:
         return source.convert("RGBA")
