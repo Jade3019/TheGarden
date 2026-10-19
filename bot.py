@@ -7,7 +7,13 @@ from pathlib import Path
 
 import discord
 from PIL import Image, ImageDraw, ImageFont
-from arrival_scene import play_arrival
+from arrival_scene import (
+    JOURNEY_CHOICES,
+    JOURNEY_QUESTION,
+    NORMAL_LEWIS,
+    dialogue_scene,
+    play_arrival,
+)
 from fishing_minigame import FishingVersionSelectView
 from inventory_test import InventoryTestView
 from main_menu import render_main_menu
@@ -240,6 +246,7 @@ def render_eye_preview(
     mark2_bottom_path: Path | None = None,
     shirt_path: Path | None = None,
     shirt_color_id: int = 1,
+    mouth_flip_vertical: bool = False,
 ) -> io.BytesIO:
     skin = Image.open(skin_path).convert("RGBA")
     eyes = Image.open(eye_path).convert("RGBA")
@@ -327,6 +334,8 @@ def render_eye_preview(
         skin.alpha_composite(nose)
     if mouth_path is not None:
         mouth = Image.open(mouth_path).convert("RGBA")
+        if mouth_flip_vertical:
+            mouth = mouth.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
         mouth = mouth.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(mouth)
     for mark_path in (mark1_top_path, mark2_top_path):
@@ -1485,10 +1494,55 @@ class FarmButton(discord.ui.Button):
             )
 
 
+def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.Image:
+    portrait_path = PROGRESS_FILE.parent / "portraits" / f"{owner_id}.png"
+    if expression == "normal":
+        with Image.open(portrait_path) as source:
+            return source.convert("RGBA")
+
+    saved = read_progress(owner_id) or {}
+    body = BodyView.restore(owner_id, saved)
+    mouths = load_mouth_images()
+    mouth_index = {"happy": 4, "sad": 4}.get(expression)
+    if (
+        body is None
+        or body.selected_skin_image is None
+        or body.selected_eye_image is None
+        or mouth_index is None
+        or mouth_index >= len(mouths)
+    ):
+        raise FileNotFoundError("The saved profile cannot be rendered with this expression.")
+
+    brows = load_brow_images()
+    brow_path = brows[6] if expression == "sad" and len(brows) > 6 else body.selected_brow_image
+    portrait_file = render_eye_preview(
+        body.selected_skin_image,
+        body.selected_eye_image,
+        body.eye_color_id,
+        brow_path=brow_path,
+        nose_path=body.selected_nose_image,
+        mouth_path=mouths[mouth_index],
+        hair_path=body.selected_hair_image,
+        bangs_top_path=body.selected_bangs_top_image,
+        bangs_bottom_path=body.selected_bangs_bottom_image,
+        hair_color_id=body.hair_color_id,
+        mark1_top_path=body.selected_mark1_top_image,
+        mark1_bottom_path=body.selected_mark1_bottom_image,
+        mark2_top_path=body.selected_mark2_top_image,
+        mark2_bottom_path=body.selected_mark2_bottom_image,
+        shirt_path=SHIRT_IMAGE if "shirt" in body.step_images else None,
+        shirt_color_id=body.shirt_color_id,
+        mouth_flip_vertical=expression == "sad",
+    )
+    with Image.open(portrait_file) as source:
+        return source.convert("RGBA")
+
+
 class ArrivalContinueView(discord.ui.View):
-    def __init__(self, owner_id: int) -> None:
+    def __init__(self, owner_id: int, stage: str = "arrival") -> None:
         super().__init__(timeout=600)
         self.owner_id = owner_id
+        self.stage = stage
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.owner_id:
@@ -1503,6 +1557,66 @@ class ArrivalContinueView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         saved = read_progress(self.owner_id) or {}
+        if saved.get("pending_farm") is None:
+            await interaction.response.edit_message(
+                content="Your farm choice is no longer available.", view=None
+            )
+            self.stop()
+            return
+
+        if self.stage == "arrival":
+            await interaction.response.edit_message(
+                content=None,
+                attachments=[
+                    discord.File(
+                        dialogue_scene(JOURNEY_QUESTION, NORMAL_LEWIS),
+                        filename="scene.png",
+                    )
+                ],
+                view=ArrivalContinueView(self.owner_id, stage="question"),
+            )
+        else:
+            portrait_path = PROGRESS_FILE.parent / "portraits" / f"{self.owner_id}.png"
+            if not portrait_path.is_file():
+                await interaction.response.edit_message(
+                    content="Your saved profile picture is missing.", view=None
+                )
+                self.stop()
+                return
+            await interaction.response.edit_message(
+                content=None,
+                attachments=[
+                    discord.File(
+                        dialogue_scene(
+                            "\n".join(JOURNEY_CHOICES),
+                            player_portrait=portrait_path,
+                            scale=3,
+                        ),
+                        filename="scene.png",
+                    )
+                ],
+                view=JourneyResponseView(self.owner_id),
+            )
+        self.stop()
+
+
+class JourneyResponseView(discord.ui.View):
+    def __init__(self, owner_id: int) -> None:
+        super().__init__(timeout=600)
+        self.owner_id = owner_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This arrival scene belongs to someone else.", ephemeral=True
+            )
+            return False
+        return True
+
+    async def choose_response(
+        self, interaction: discord.Interaction, response: str, expression: str
+    ) -> None:
+        saved = read_progress(self.owner_id) or {}
         pending_farm = saved.pop("pending_farm", None)
         if pending_farm is None:
             await interaction.response.edit_message(
@@ -1510,13 +1624,44 @@ class ArrivalContinueView(discord.ui.View):
             )
             self.stop()
             return
+
+        portrait = render_profile_portrait(self.owner_id, expression)
+        scene = dialogue_scene(response, player_portrait=portrait)
         saved["farm"] = pending_farm
         saved["phase"] = "arrived"
         write_progress(self.owner_id, saved)
         await interaction.response.edit_message(
-            content="Your farm is ready.", view=None
+            content=None,
+            attachments=[discord.File(scene, filename="scene.png")],
+            view=None,
         )
         self.stop()
+
+    @discord.ui.button(label="1. It went alright", style=discord.ButtonStyle.secondary, row=0)
+    async def alright(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await self.choose_response(interaction, "It went alright", "normal")
+
+    @discord.ui.button(
+        label="2. it went amazing, i cant wait to get started.",
+        style=discord.ButtonStyle.secondary,
+        row=1,
+    )
+    async def amazing(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await self.choose_response(
+            interaction,
+            "it went amazing, i cant wait to get started.",
+            "happy",
+        )
+
+    @discord.ui.button(label="3. it went horrible.", style=discord.ButtonStyle.secondary, row=2)
+    async def horrible(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await self.choose_response(interaction, "it went horrible.", "sad")
 
 
 class ConfirmFarmView(discord.ui.View):
@@ -2239,6 +2384,10 @@ class FarmBot(discord.Client):
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(intents=intents)
+        self.tree = discord.app_commands.CommandTree(self)
+
+    async def setup_hook(self) -> None:
+        await self.tree.sync()
 
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot:
