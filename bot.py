@@ -7,6 +7,7 @@ from pathlib import Path
 
 import discord
 from PIL import Image, ImageDraw, ImageFont
+from arrival_scene import play_arrival
 from fishing_minigame import FishingVersionSelectView
 from inventory_test import InventoryTestView
 from main_menu import render_main_menu
@@ -1507,10 +1508,10 @@ class ConfirmFarmView(discord.ui.View):
     ) -> None:
         saved = read_progress(self.owner_id) or {}
         write_progress(self.owner_id, {**saved, "farm": self.farm_name})
-        await interaction.response.edit_message(
-            content=f"You chose the {self.farm_name}!", view=None
-        )
+        await interaction.response.defer()
+        await interaction.message.delete()
         self.stop()
+        await play_arrival(self.picker, Image.open(render_farm_picker()))
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
     async def no(
