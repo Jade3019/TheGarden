@@ -261,3 +261,29 @@ async def play_arrival(
         attachments=attachment(arrival_scene()),
         view=completion_view,
     )
+
+
+async def play_farm_reveal(
+    message: discord.Message,
+    dialogue_image: Image.Image,
+    farm_image: Image.Image,
+    step_delay: float = 0.35,
+) -> None:
+    def attachment(image: Image.Image, brightness: float) -> list[discord.File]:
+        return [discord.File(fade_frame(image, brightness), filename="scene.png")]
+
+    for brightness in (0.65, 0.3, 0.08, 0.0):
+        await message.edit(
+            content=None,
+            attachments=attachment(dialogue_image, brightness),
+            view=None,
+        )
+        await asyncio.sleep(step_delay)
+    for brightness in (0.08, 0.3, 0.65, 1.0):
+        await message.edit(
+            content=None,
+            attachments=attachment(farm_image, brightness),
+            view=None,
+        )
+        if brightness < 1.0:
+            await asyncio.sleep(step_delay)

@@ -14,6 +14,7 @@ from arrival_scene import (
     NORMAL_LEWIS,
     dialogue_scene,
     play_arrival,
+    play_farm_reveal,
 )
 from fishing_minigame import FishingVersionSelectView
 from inventory_test import InventoryTestView
@@ -80,6 +81,16 @@ FARMS = [
     "Beach Farm",
     "Meadowlands Farm",
 ]
+FARM_SCENE_IMAGES = {
+    "Standard Farm": Path(__file__).parent / "Farm_maps" / "Standard_farm.png",
+    "Riverland Farm": Path(__file__).parent / "Farm_maps" / "Riverland_farm.png",
+    "Forest Farm": Path(__file__).parent / "Farm_maps" / "Forest_farm.png",
+    "Hill-top Farm": Path(__file__).parent / "Farm_maps" / "Hill-top_farm.png",
+    "Wilderness Farm": Path(__file__).parent / "Farm_maps" / "Wilderness_farm.png",
+    "Four Corners Farm": Path(__file__).parent / "Farm_maps" / "four_corners_farm.png",
+    "Beach Farm": Path(__file__).parent / "Farm_maps" / "Beach_farm.png",
+    "Meadowlands Farm": Path(__file__).parent / "Farm_maps" / "Meadowlands_farm.png",
+}
 FARM_INFO = {
     "Standard Farm": (
         "10% bonus on farming. Holding animals here is easy. "
@@ -1839,20 +1850,29 @@ class JourneyLewisReplyView(discord.ui.View):
             self.stop()
             return
 
+        farm_image_path = FARM_SCENE_IMAGES.get(pending_farm)
+        if farm_image_path is None or not farm_image_path.is_file():
+            await interaction.response.edit_message(
+                content="The image for your selected farm is unavailable.", view=None
+            )
+            self.stop()
+            return
+
         lewis_image = {
             "normal": NORMAL_LEWIS,
             "happy": HAPPY_LEWIS,
             "sad": SAD_LEWIS,
         }[self.expression]
-        scene = dialogue_scene(self.reply, lewis_image=lewis_image)
+        dialogue_frame = dialogue_scene(self.reply, lewis_image=lewis_image)
+        with Image.open(dialogue_frame) as source:
+            dialogue_image = source.convert("RGB")
+        with Image.open(farm_image_path) as source:
+            farm_image = source.convert("RGB")
         saved["farm"] = pending_farm
         saved["phase"] = "arrived"
         write_progress(self.owner_id, saved)
-        await interaction.response.edit_message(
-            content=None,
-            attachments=[discord.File(scene, filename="scene.png")],
-            view=None,
-        )
+        await interaction.response.defer()
+        await play_farm_reveal(interaction.message, dialogue_image, farm_image)
         self.stop()
 
 
