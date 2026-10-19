@@ -17,6 +17,7 @@ GLYPHS = {
     "f": ("00110", "01001", "01000", "11100", "01000", "01000", "01000"),
     "i": ("00100", "00000", "01100", "00100", "00100", "00100", "01110"),
     "n": ("00000", "00000", "10110", "11001", "10001", "10001", "10001"),
+    "h": ("10000", "10000", "10110", "11001", "10001", "10001", "10001"),
     "a": ("00000", "00000", "01110", "00001", "01111", "10001", "01111"),
     "l": ("01100", "00100", "00100", "00100", "00100", "00100", "01110"),
     "y": ("00000", "00000", "10001", "10001", "01111", "00001", "01110"),
@@ -68,7 +69,7 @@ def _draw_text(image: Image.Image, text: str, x: int, y: int, scale: int) -> Non
         cursor += 6 * scale
 
 
-ARRIVAL_TEXT = "You finally arrived!"
+ARRIVAL_TEXT = "You finally have arrived!"
 TEXT_X = 56
 TEXT_SCALE = 5
 REVEAL_EDGE = 40
@@ -141,4 +142,4 @@ async def play_arrival(
             attachments=attachment(arrival_scene(reveal)),
             view=completion_view if reveal == 1.0 else None,
         )
-        await asyncio.sleep(step_delay * 0.5)
+        await asyncio.sleep(step_delay * 0.15)
