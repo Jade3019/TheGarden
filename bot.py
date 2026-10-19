@@ -129,7 +129,6 @@ SHIRT_IMAGE = Path(__file__).parent / "assets" / "shirt" / "shirt.png"
 HAPPY_CLOSED_EYES_IMAGE = Path(__file__).parent / "assets" / "expressions" / "happy_closed_eyes.png"
 HAPPY_SMILE_IMAGE = Path(__file__).parent / "assets" / "expressions" / "happy_smile.png"
 SAD_EYES_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_eyes.png"
-SAD_BROWS_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_brows.png"
 SAD_LIPS_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_lips.png"
 SAD_PURPLE_LIPS_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_purple_lips.png"
 SAD_IRIS_COLOR_INDEX = {
@@ -214,24 +213,6 @@ def recolor_mark_layer(
         for x in range(layer.width):
             red, green, blue, alpha = pixels[x, y]
             replacement = skin_shade_map.get((red, green, blue))
-            if replacement is not None:
-                pixels[x, y] = (*replacement, alpha)
-    return layer
-
-
-def recolor_sad_brow_layer(
-    path: Path, skin_shade_map: dict[tuple[int, int, int], tuple[int, int, int]]
-) -> Image.Image:
-    layer = Image.open(path).convert("RGBA")
-    target_shades = {
-        (239, 85, 33): skin_shade_map.get((255, 135, 110), (255, 135, 110)),
-        (254, 116, 35): skin_shade_map.get((255, 170, 128), (255, 170, 128)),
-    }
-    pixels = layer.load()
-    for y in range(layer.height):
-        for x in range(layer.width):
-            red, green, blue, alpha = pixels[x, y]
-            replacement = target_shades.get((red, green, blue))
             if replacement is not None:
                 pixels[x, y] = (*replacement, alpha)
     return layer
@@ -416,10 +397,6 @@ def render_eye_preview(
         skin.alpha_composite(bangs_top)
     if sad_eye_overlay is not None:
         skin.alpha_composite(sad_eye_overlay)
-        if brow_path is not None:
-            brows = recolor_sad_brow_layer(brow_path, skin_shade_map)
-            brows = brows.resize(skin.size, Image.Resampling.NEAREST)
-            skin.alpha_composite(brows)
 
     output = io.BytesIO()
     skin.save(output, format="PNG")
@@ -1599,7 +1576,7 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
     if expression == "happy":
         brow_path = None
     elif expression == "sad":
-        brow_path = SAD_BROWS_IMAGE
+        brow_path = None
     portrait_file = render_eye_preview(
         body.selected_skin_image,
         eye_path,
