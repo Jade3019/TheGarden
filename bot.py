@@ -219,6 +219,24 @@ def recolor_mark_layer(
     return layer
 
 
+def recolor_sad_brow_layer(
+    path: Path, skin_shade_map: dict[tuple[int, int, int], tuple[int, int, int]]
+) -> Image.Image:
+    layer = Image.open(path).convert("RGBA")
+    target_shades = {
+        (239, 85, 33): skin_shade_map.get((255, 135, 110), (255, 135, 110)),
+        (254, 116, 35): skin_shade_map.get((255, 170, 128), (255, 170, 128)),
+    }
+    pixels = layer.load()
+    for y in range(layer.height):
+        for x in range(layer.width):
+            red, green, blue, alpha = pixels[x, y]
+            replacement = target_shades.get((red, green, blue))
+            if replacement is not None:
+                pixels[x, y] = (*replacement, alpha)
+    return layer
+
+
 def recolor_shirt_layer(
     path: Path,
     color_id: int,
@@ -329,6 +347,7 @@ def render_eye_preview(
     skin_pixels = skin.load()
     eye_pixels = eyes.load()
     reference_pixels = eye_reference.load()
+    sad_eye_overlay = None
     if eye_overlay_path is None:
         for y in range(85, min(146, skin.height)):
             for x in range(skin.width):
@@ -341,14 +360,15 @@ def render_eye_preview(
             eye_overlay = source.convert("RGBA")
         if eye_overlay.size != skin.size:
             raise ValueError("Sad eye overlay must match the profile size.")
+        eye_overlay_pixels = eye_overlay.load()
         for x in range(eye_overlay.width):
             for y in range(eye_overlay.height):
-                red, green, blue, alpha = eye_overlay.getpixel((x, y))
+                red, green, blue, alpha = eye_overlay_pixels[x, y]
                 shade_index = SAD_IRIS_COLOR_INDEX.get((red, green, blue))
                 if shade_index is not None:
                     target_shade = target_shades[shade_index]
-                    eye_overlay.putpixel((x, y), (*target_shade, alpha))
-        skin.alpha_composite(eye_overlay)
+                    eye_overlay_pixels[x, y] = (*target_shade, alpha)
+        sad_eye_overlay = eye_overlay
     if closed_eyes:
         with Image.open(HAPPY_CLOSED_EYES_IMAGE) as source:
             closed_eye_layer = source.convert("RGBA")
@@ -360,7 +380,7 @@ def render_eye_preview(
         shirt = recolor_shirt_layer(shirt_path, shirt_color_id, skin_shade_map)
         shirt = shirt.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(shirt)
-    if brow_path is not None:
+    if brow_path is not None and eye_overlay_path is None:
         brows = Image.open(brow_path).convert("RGBA")
         brows = brows.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(brows)
@@ -394,6 +414,12 @@ def render_eye_preview(
         bangs_top = recolor_hair_layer(bangs_top_path, hair_color_id)
         bangs_top = bangs_top.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(bangs_top)
+    if sad_eye_overlay is not None:
+        skin.alpha_composite(sad_eye_overlay)
+        if brow_path is not None:
+            brows = recolor_sad_brow_layer(brow_path, skin_shade_map)
+            brows = brows.resize(skin.size, Image.Resampling.NEAREST)
+            skin.alpha_composite(brows)
 
     output = io.BytesIO()
     skin.save(output, format="PNG")
