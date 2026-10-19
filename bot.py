@@ -1507,11 +1507,16 @@ class ConfirmFarmView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         saved = read_progress(self.owner_id) or {}
-        write_progress(self.owner_id, {**saved, "farm": self.farm_name})
+        write_progress(
+            self.owner_id,
+            {**saved, "farm": self.farm_name, "phase": "arrival"},
+        )
         await interaction.response.defer()
         await interaction.message.delete()
         self.stop()
         await play_arrival(self.picker, Image.open(render_farm_picker()))
+        saved = read_progress(self.owner_id) or {}
+        write_progress(self.owner_id, {**saved, "phase": "arrived"})
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
     async def no(
@@ -2087,6 +2092,15 @@ class MainMenuView(discord.ui.View):
                 await interaction.response.send_message(
                     "No save file was found.", ephemeral=True
                 )
+                return
+            if saved.get("phase") == "arrival":
+                await interaction.response.edit_message(
+                    content="Now it's time to choose your farm!",
+                    attachments=[],
+                    view=None,
+                )
+                await show_farm_picker(interaction.message, self.owner_id)
+                self.stop()
                 return
             portrait_path = PROGRESS_FILE.parent / "portraits" / f"{self.owner_id}.png"
             profile_complete = saved.get("completed") or portrait_path.is_file()
