@@ -1510,7 +1510,7 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
     saved = read_progress(owner_id) or {}
     body = BodyView.restore(owner_id, saved)
     mouths = load_mouth_images()
-    mouth_index = {"happy": 10, "sad": 4}.get(expression)
+    mouth_index = {"happy": 4, "sad": 4}.get(expression)
     if (
         body is None
         or body.selected_skin_image is None
@@ -1521,7 +1521,7 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
         raise FileNotFoundError("The saved profile cannot be rendered with this expression.")
 
     brows = load_brow_images()
-    brow_index = {"happy": 1, "sad": 6}.get(expression)
+    brow_index = {"happy": 2, "sad": 6}.get(expression)
     brow_path = (
         brows[brow_index]
         if brow_index is not None and len(brows) > brow_index
