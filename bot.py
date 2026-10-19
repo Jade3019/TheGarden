@@ -238,6 +238,29 @@ def recolor_sad_brow_layer(
     return layer
 
 
+def tighten_sad_brow_spacing(layer: Image.Image) -> Image.Image:
+    alpha = layer.getchannel("A")
+    occupied_columns = [
+        x
+        for x in range(layer.width)
+        if alpha.crop((x, 0, x + 1, layer.height)).getbbox() is not None
+    ]
+    gaps = list(zip(occupied_columns, occupied_columns[1:]))
+    if not gaps:
+        return layer
+    left_column, right_column = max(gaps, key=lambda gap: gap[1] - gap[0])
+    if right_column - left_column <= 1:
+        return layer
+
+    split = (left_column + right_column + 1) // 2
+    adjusted = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    adjusted.alpha_composite(layer.crop((0, 0, split, layer.height)), (8, 0))
+    adjusted.alpha_composite(
+        layer.crop((split, 0, layer.width, layer.height)), (split - 8, 0)
+    )
+    return adjusted
+
+
 def compensate_for_dialogue_flip(layer: Image.Image) -> Image.Image:
     bounds = layer.getchannel("A").getbbox()
     if bounds is None:
@@ -401,6 +424,15 @@ def render_eye_preview(
         brows = Image.open(brow_path).convert("RGBA")
         brows = brows.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(brows)
+    if sad_eye_overlay is not None:
+        skin.alpha_composite(sad_eye_overlay)
+        if brow_path is not None:
+            brows = recolor_sad_brow_layer(brow_path, skin_shade_map)
+            brows = brows.resize(skin.size, Image.Resampling.NEAREST)
+            brows = tighten_sad_brow_spacing(brows)
+            if compensate_brow_dialogue_flip:
+                brows = compensate_for_dialogue_flip(brows)
+            skin.alpha_composite(brows)
     if nose_path is not None:
         nose = Image.open(nose_path).convert("RGBA")
         nose = nose.resize(skin.size, Image.Resampling.NEAREST)
@@ -431,14 +463,6 @@ def render_eye_preview(
         bangs_top = recolor_hair_layer(bangs_top_path, hair_color_id)
         bangs_top = bangs_top.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(bangs_top)
-    if sad_eye_overlay is not None:
-        skin.alpha_composite(sad_eye_overlay)
-        if brow_path is not None:
-            brows = recolor_sad_brow_layer(brow_path, skin_shade_map)
-            brows = brows.resize(skin.size, Image.Resampling.NEAREST)
-            if compensate_brow_dialogue_flip:
-                brows = compensate_for_dialogue_flip(brows)
-            skin.alpha_composite(brows)
 
     output = io.BytesIO()
     skin.save(output, format="PNG")
