@@ -12,7 +12,6 @@ from arrival_scene import (
     JOURNEY_QUESTION,
     HAPPY_LEWIS,
     NORMAL_LEWIS,
-    SAD_LEWIS,
     dialogue_scene,
     play_arrival,
 )
@@ -35,6 +34,7 @@ PROGRESS_FILE = Path(__file__).parent / "data" / "farm_progress.json"
 FARMS_DIR = Path(__file__).parent / "assets" / "farms"
 ROOM_IMAGE = Path(__file__).parent / "room_edits" / "image.png"
 BED_IMAGE = Path(__file__).parent / "room_edits" / "image copy.png"
+SAD_LEWIS = Path(__file__).parent / "Characters" / "Lewis" / "sad_lewis.png"
 ROOM_FLOOR_BOUNDS = (32, 202, 555, 558)
 BED_RENDER_SIZE = (100, 150)
 BED_MOVE_STEP = 8
