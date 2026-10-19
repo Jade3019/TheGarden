@@ -128,6 +128,15 @@ BASE_HAIR_SHADES = [tuple(shade) for shade in HAIR_PALETTES[0]["shades"]]
 SHIRT_IMAGE = Path(__file__).parent / "assets" / "shirt" / "shirt.png"
 HAPPY_CLOSED_EYES_IMAGE = Path(__file__).parent / "assets" / "expressions" / "happy_closed_eyes.png"
 HAPPY_SMILE_IMAGE = Path(__file__).parent / "assets" / "expressions" / "happy_smile.png"
+SAD_EYES_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_eyes.png"
+SAD_BROWS_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_brows.png"
+SAD_LIPS_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_lips.png"
+SAD_PURPLE_LIPS_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_purple_lips.png"
+SAD_IRIS_COLOR_INDEX = {
+    (12, 62, 33): 0,
+    (30, 124, 70): 1,
+    (81, 194, 133): 2,
+}
 SHIRT_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "shirt_colors.json").read_text()
 )
@@ -248,6 +257,7 @@ def render_eye_preview(
     mark1_bottom_path: Path | None = None,
     mark2_top_path: Path | None = None,
     mark2_bottom_path: Path | None = None,
+    eye_overlay_path: Path | None = None,
     shirt_path: Path | None = None,
     shirt_color_id: int = 1,
     mouth_flip_vertical: bool = False,
@@ -319,12 +329,26 @@ def render_eye_preview(
     skin_pixels = skin.load()
     eye_pixels = eyes.load()
     reference_pixels = eye_reference.load()
-    for y in range(85, min(146, skin.height)):
-        for x in range(skin.width):
-            eye_pixel = eye_pixels[x, y]
-            if eye_pixel != reference_pixels[x, y]:
-                if not closed_eyes:
-                    skin_pixels[x, y] = shade_map.get(eye_pixel, eye_pixel)
+    if eye_overlay_path is None:
+        for y in range(85, min(146, skin.height)):
+            for x in range(skin.width):
+                eye_pixel = eye_pixels[x, y]
+                if eye_pixel != reference_pixels[x, y]:
+                    if not closed_eyes:
+                        skin_pixels[x, y] = shade_map.get(eye_pixel, eye_pixel)
+    if eye_overlay_path is not None:
+        with Image.open(eye_overlay_path) as source:
+            eye_overlay = source.convert("RGBA")
+        if eye_overlay.size != skin.size:
+            raise ValueError("Sad eye overlay must match the profile size.")
+        for x in range(eye_overlay.width):
+            for y in range(eye_overlay.height):
+                red, green, blue, alpha = eye_overlay.getpixel((x, y))
+                shade_index = SAD_IRIS_COLOR_INDEX.get((red, green, blue))
+                if shade_index is not None:
+                    target_shade = target_shades[shade_index]
+                    eye_overlay.putpixel((x, y), (*target_shade, alpha))
+        skin.alpha_composite(eye_overlay)
     if closed_eyes:
         with Image.open(HAPPY_CLOSED_EYES_IMAGE) as source:
             closed_eye_layer = source.convert("RGBA")
@@ -1521,7 +1545,6 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
 
     saved = read_progress(owner_id) or {}
     body = BodyView.restore(owner_id, saved)
-    mouths = load_mouth_images()
     if (
         body is None
         or body.selected_skin_image is None
@@ -1531,20 +1554,26 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
 
     eye_path = body.selected_eye_image
     mouth_path = body.selected_mouth_image
+    eye_overlay_path = None
     if expression == "happy":
         mouth_path = HAPPY_SMILE_IMAGE
     elif expression == "sad":
-        eye_path = EYES_DIR / "10.eyeskin1.png"
-        if not eye_path.is_file():
-            raise FileNotFoundError(f"Sad expression eye asset is missing: {eye_path}")
-        sad_mouth_index = 4
-        if len(mouths) <= sad_mouth_index:
-            raise FileNotFoundError("The sad expression mouth asset is missing.")
-        mouth_path = mouths[sad_mouth_index]
+        eye_overlay_path = SAD_EYES_IMAGE
+        if body.selected_mouth_image is None:
+            mouth_path = SAD_PURPLE_LIPS_IMAGE
+        else:
+            with Image.open(body.selected_mouth_image) as selected_mouth:
+                mouth_path = (
+                    SAD_LIPS_IMAGE
+                    if selected_mouth.getchannel("A").getbbox() is not None
+                    else SAD_PURPLE_LIPS_IMAGE
+                )
 
     brow_path = body.selected_brow_image
-    if expression in {"happy", "sad"}:
+    if expression == "happy":
         brow_path = None
+    elif expression == "sad":
+        brow_path = SAD_BROWS_IMAGE
     portrait_file = render_eye_preview(
         body.selected_skin_image,
         eye_path,
@@ -1560,9 +1589,9 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
         mark1_bottom_path=body.selected_mark1_bottom_image,
         mark2_top_path=body.selected_mark2_top_image,
         mark2_bottom_path=body.selected_mark2_bottom_image,
+        eye_overlay_path=eye_overlay_path,
         shirt_path=SHIRT_IMAGE if "shirt" in body.step_images else None,
         shirt_color_id=body.shirt_color_id,
-        mouth_flip_vertical=expression == "sad",
         closed_eyes=expression == "happy",
     )
     with Image.open(portrait_file) as source:
