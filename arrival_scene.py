@@ -3,7 +3,7 @@ import io
 from pathlib import Path
 
 import discord
-from PIL import Image, ImageDraw, ImageEnhance
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance
 
 PROJECT_DIR = Path(__file__).parent
 BUS_STOP_IMAGE = PROJECT_DIR / "stardew places" / "day spring" / "bus_stop_spring_day.png"
@@ -68,22 +68,49 @@ def _draw_text(image: Image.Image, text: str, x: int, y: int, scale: int) -> Non
         cursor += 6 * scale
 
 
-def arrival_scene(with_text: bool) -> io.BytesIO:
+ARRIVAL_TEXT = "You finally arrived!"
+TEXT_X = 56
+TEXT_SCALE = 5
+REVEAL_EDGE = 40
+
+
+def _text_width(text: str, scale: int) -> int:
+    return sum(4 * scale if character == " " else 6 * scale for character in text)
+
+
+def arrival_scene(reveal: float | None = None) -> io.BytesIO:
     scene = Image.open(BUS_STOP_IMAGE).convert("RGBA")
     frame = Image.open(DIALOGUE_FRAME).convert("RGBA")
     frame_height = round(frame.height * scene.width / frame.width)
     frame = frame.resize((scene.width, frame_height), Image.Resampling.NEAREST)
     frame_top = scene.height - frame_height
     scene.alpha_composite(frame, (0, frame_top))
+    # The frame's top rows are transparent, so Lewis stands on its first solid row.
+    alpha = frame.getchannel("A")
+    solid_row = next(
+        row
+        for row in range(frame.height)
+        if sum(1 for x in range(0, frame.width, 8) if alpha.getpixel((x, row)) > 0)
+        > frame.width // 16
+    )
 
     lewis = Image.open(HAPPY_LEWIS).convert("RGBA")
     lewis = lewis.resize((lewis.width * 2, lewis.height * 2), Image.Resampling.NEAREST)
-    lewis_x = 40
-    lewis_y = frame_top - lewis.height
-    scene.alpha_composite(lewis, (lewis_x, lewis_y))
+    scene.alpha_composite(lewis, (40, frame_top + solid_row - lewis.height))
 
-    if with_text:
-        _draw_text(scene, "You finally arrived!", 56, frame_top + 44, 5)
+    if reveal is not None:
+        text_layer = Image.new("RGBA", scene.size, (0, 0, 0, 0))
+        text_top = frame_top + 44
+        _draw_text(text_layer, ARRIVAL_TEXT, TEXT_X, text_top, TEXT_SCALE)
+        text_width = _text_width(ARRIVAL_TEXT, TEXT_SCALE)
+        front = TEXT_X + (text_width + REVEAL_EDGE) * reveal
+        mask = Image.new("L", scene.size, 0)
+        mask_draw = ImageDraw.Draw(mask)
+        for x in range(TEXT_X, TEXT_X + text_width + 1):
+            strength = max(0.0, min(1.0, (front - x) / REVEAL_EDGE))
+            mask_draw.line((x, text_top, x, text_top + 8 * TEXT_SCALE), fill=round(strength * 255))
+        text_layer.putalpha(ImageChops.multiply(text_layer.getchannel("A"), mask))
+        scene.alpha_composite(text_layer)
     return _to_bytes(scene)
 
 
@@ -104,6 +131,8 @@ async def play_arrival(
             )
             await asyncio.sleep(step_delay)
     await asyncio.sleep(step_delay * 3)
-    await message.edit(attachments=attachment(arrival_scene(False)))
+    await message.edit(attachments=attachment(arrival_scene()))
     await asyncio.sleep(step_delay)
-    await message.edit(attachments=attachment(arrival_scene(True)))
+    for reveal in (0.25, 0.5, 0.75, 1.0):
+        await message.edit(attachments=attachment(arrival_scene(reveal)))
+        await asyncio.sleep(step_delay * 0.5)
