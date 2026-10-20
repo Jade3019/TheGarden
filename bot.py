@@ -165,6 +165,7 @@ SAD_EYES_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_referen
 SAD_BROWS_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_brows.png"
 SAD_LIPS_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_lips.png"
 SAD_PURPLE_LIPS_IMAGE = Path(__file__).parent / "assets" / "expressions" / "sad_reference_purple_lips.png"
+RED_LIP_COLORS = {(142, 4, 41), (189, 57, 71), (245, 102, 96)}
 SAD_IRIS_COLOR_INDEX = {
     (12, 62, 33): 0,
     (35, 75, 37): 0,
@@ -308,6 +309,62 @@ def tighten_sad_brow_spacing(layer: Image.Image) -> Image.Image:
         layer.crop((split, 0, layer.width, layer.height)), (split - 8, 0)
     )
     return adjusted
+
+
+def align_sad_brows_to_reference(
+    brows: Image.Image, reference: Image.Image
+) -> Image.Image:
+    def split_position(layer: Image.Image) -> int | None:
+        alpha = layer.getchannel("A")
+        occupied = [
+            x
+            for x in range(layer.width)
+            if alpha.crop((x, 0, x + 1, layer.height)).getbbox() is not None
+        ]
+        if len(occupied) < 2:
+            return None
+
+        gaps = [
+            (right - left, left, right)
+            for left, right in zip(occupied, occupied[1:])
+            if right - left > 1
+        ]
+        if gaps:
+            _, left, right = max(gaps)
+            return (left + right) // 2
+
+        bounds = alpha.getbbox()
+        if bounds is None:
+            return None
+        middle = (bounds[0] + bounds[2]) // 2
+        search_start = bounds[0] + round((bounds[2] - bounds[0]) * 0.4)
+        search_end = bounds[0] + round((bounds[2] - bounds[0]) * 0.6)
+        return min(
+            range(search_start, max(search_start + 1, search_end)),
+            key=lambda x: (
+                sum(alpha.getpixel((x, y)) > 0 for y in range(layer.height)),
+                abs(x - middle),
+            ),
+        )
+
+    brows_split = split_position(brows)
+    reference_split = split_position(reference)
+    if brows_split is None or reference_split is None:
+        return align_overlay_to_reference(brows, reference)
+
+    def half_layers(layer: Image.Image, split: int) -> tuple[Image.Image, Image.Image]:
+        left = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+        right = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+        left.alpha_composite(layer.crop((0, 0, split, layer.height)))
+        right.alpha_composite(layer.crop((split, 0, layer.width, layer.height)), (split, 0))
+        return left, right
+
+    brow_halves = half_layers(brows, brows_split)
+    reference_halves = half_layers(reference, reference_split)
+    aligned = Image.new("RGBA", brows.size, (0, 0, 0, 0))
+    for brow_half, reference_half in zip(brow_halves, reference_halves):
+        aligned.alpha_composite(align_overlay_to_reference(brow_half, reference_half))
+    return aligned
 
 
 def compensate_for_dialogue_flip(layer: Image.Image) -> Image.Image:
@@ -621,7 +678,6 @@ def render_eye_preview(
         if brow_path is not None:
             brows = recolor_sad_brow_layer(brow_path, skin_shade_map)
             brows = brows.resize(skin.size, Image.Resampling.NEAREST)
-            brows = tighten_sad_brow_spacing(brows)
             if masculine_eyes and expression_brow_reference_path is not None:
                 with Image.open(expression_brow_reference_path) as source:
                     brow_reference = source.convert("RGBA")
@@ -629,7 +685,9 @@ def render_eye_preview(
                     brow_reference = brow_reference.resize(
                         skin.size, Image.Resampling.NEAREST
                     )
-                brows = align_overlay_to_reference(brows, brow_reference)
+                brows = align_sad_brows_to_reference(brows, brow_reference)
+            else:
+                brows = tighten_sad_brow_spacing(brows)
             if compensate_brow_dialogue_flip:
                 brows = compensate_for_dialogue_flip(brows)
             skin.alpha_composite(brows)
@@ -2005,6 +2063,21 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
     ):
         raise FileNotFoundError("The saved profile cannot be rendered with this expression.")
 
+    selected_mouth_has_pixels = False
+    selected_mouth_has_red_lips = False
+    if body.selected_mouth_image is not None:
+        with Image.open(body.selected_mouth_image) as selected_mouth:
+            selected_mouth_image = selected_mouth.convert("RGBA")
+            selected_mouth_has_pixels = (
+                selected_mouth_image.getchannel("A").getbbox() is not None
+            )
+            pixels = selected_mouth_image.load()
+            selected_mouth_has_red_lips = any(
+                pixels[x, y][3] and pixels[x, y][:3] in RED_LIP_COLORS
+                for y in range(selected_mouth_image.height)
+                for x in range(selected_mouth_image.width)
+            )
+
     eye_path = body.selected_eye_image
     mouth_path = body.selected_mouth_image
     eye_overlay_path = None
@@ -2012,15 +2085,9 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
         mouth_path = HAPPY_SMILE_IMAGE
     elif expression == "sad":
         eye_overlay_path = SAD_EYES_IMAGE
-        if body.selected_mouth_image is None:
-            mouth_path = SAD_PURPLE_LIPS_IMAGE
-        else:
-            with Image.open(body.selected_mouth_image) as selected_mouth:
-                mouth_path = (
-                    SAD_LIPS_IMAGE
-                    if selected_mouth.getchannel("A").getbbox() is not None
-                    else SAD_PURPLE_LIPS_IMAGE
-                )
+        mouth_path = (
+            SAD_LIPS_IMAGE if selected_mouth_has_red_lips else SAD_PURPLE_LIPS_IMAGE
+        )
 
     brow_path = body.selected_brow_image
     if expression == "happy":
@@ -2030,8 +2097,18 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
     expression_brow_reference_path = None
     expression_mouth_reference_path = None
     if body.gender == "masculine" and expression in {"happy", "sad"}:
-        expression_brow_reference_path = MASCULINE_BROWS_DIR / "1.png"
-        expression_mouth_reference_path = MASCULINE_MOUTHS_DIR / "1.png"
+        expression_brow_reference_path = body.selected_brow_image
+        if expression_brow_reference_path is None:
+            expression_brow_reference_path = MASCULINE_BROWS_DIR / "1.png"
+        else:
+            with Image.open(expression_brow_reference_path) as selected_brow:
+                if selected_brow.getchannel("A").getbbox() is None:
+                    expression_brow_reference_path = MASCULINE_BROWS_DIR / "1.png"
+        expression_mouth_reference_path = (
+            body.selected_mouth_image
+            if selected_mouth_has_pixels
+            else MASCULINE_MOUTHS_DIR / "1.png"
+        )
     portrait_file = render_eye_preview(
         body.selected_skin_image,
         eye_path,
@@ -2051,7 +2128,9 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
         shirt_path=SHIRT_IMAGE if "shirt" in body.step_images else None,
         shirt_color_id=body.shirt_color_id,
         closed_eyes=expression == "happy",
-        compensate_brow_dialogue_flip=expression == "sad",
+        compensate_brow_dialogue_flip=(
+            expression == "sad" and body.gender != "masculine"
+        ),
         facial_hair_path=body.selected_facial_hair_image,
         expression_brow_reference_path=expression_brow_reference_path,
         expression_mouth_reference_path=expression_mouth_reference_path,
