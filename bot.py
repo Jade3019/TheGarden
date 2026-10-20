@@ -27,6 +27,13 @@ MASCULINE_BODY_DIR = Path(__file__).parent / "assets" / "masculine" / "bodies"
 MASCULINE_SKIN_DIR = Path(__file__).parent / "assets" / "masculine" / "skincolors"
 MASCULINE_EYES_DIR = Path(__file__).parent / "assets" / "masculine" / "eyes"
 MASCULINE_BROWS_DIR = Path(__file__).parent / "assets" / "masculine" / "brows"
+MASCULINE_NOSES_DIR = Path(__file__).parent / "assets" / "masculine" / "noses"
+MASCULINE_MOUTHS_DIR = Path(__file__).parent / "assets" / "masculine" / "mouths"
+MASCULINE_HAIR_DIR = Path(__file__).parent / "assets" / "masculine" / "hair"
+MASCULINE_BANGS_TOP_DIR = Path(__file__).parent / "assets" / "masculine" / "bangs" / "top"
+MASCULINE_BANGS_BOTTOM_DIR = Path(__file__).parent / "assets" / "masculine" / "bangs" / "bottom"
+MASCULINE_MARKS_TOP_DIR = Path(__file__).parent / "assets" / "masculine" / "marks" / "top"
+MASCULINE_MARKS_BOTTOM_DIR = Path(__file__).parent / "assets" / "masculine" / "marks" / "bottom"
 EYES_DIR = Path(__file__).parent / "assets" / "eyes"
 BROWS_DIR = Path(__file__).parent / "assets" / "brows"
 NOSES_DIR = Path(__file__).parent / "assets" / "noses"
@@ -406,7 +413,7 @@ def render_eye_preview(
             skin_shade_map[source_pixel[:3]] = target_pixel[:3]
 
     head_top_layers: list[Path] = []
-    if hair_path is not None:
+    if hair_path is not None and not masculine_eyes:
         with Image.open(hair_path) as hair_image:
             front_style = HAIR_FRONT_BY_STYLE.get(int(hair_path.stem), 26)
             if (
@@ -417,16 +424,17 @@ def render_eye_preview(
                     BANGS_BOTTOM_DIR / f"{front_style}.png",
                     BANGS_TOP_DIR / f"{front_style}.png",
                 ]
-    back_layers = [
+    hair_back_layers = [
         (layer, True)
         for layer in (hair_path, *head_top_layers[:1], bangs_bottom_path)
         if layer is not None
-    ] + [
+    ]
+    mark_back_layers = [
         (layer, False)
         for layer in (mark1_bottom_path, mark2_bottom_path)
         if layer is not None
     ]
-    if back_layers:
+    if hair_back_layers or mark_back_layers:
         body = skin.copy()
         body_pixels = body.load()
         for y in range(body.height):
@@ -435,7 +443,9 @@ def render_eye_preview(
                 if red >= 254 and green >= 254 and blue >= 254:
                     body_pixels[x, y] = (255, 255, 255, 0)
         background = Image.new("RGBA", skin.size, (255, 255, 255, 255))
-        for layer_path, is_hair in back_layers:
+        for layer_path, is_hair in hair_back_layers + mark_back_layers:
+            if masculine_eyes and is_hair:
+                continue
             layer = (
                 recolor_hair_layer(layer_path, hair_color_id)
                 if is_hair
@@ -444,6 +454,11 @@ def render_eye_preview(
             layer = layer.resize(skin.size, Image.Resampling.NEAREST)
             background.alpha_composite(layer)
         background.alpha_composite(body)
+        if masculine_eyes:
+            for layer_path, _ in hair_back_layers:
+                layer = recolor_hair_layer(layer_path, hair_color_id)
+                layer = layer.resize(skin.size, Image.Resampling.NEAREST)
+                background.alpha_composite(layer)
         skin = background
     target_shades = EYE_PALETTES[color_id - 1]["shades"]
     shade_map = {
@@ -661,13 +676,24 @@ def natural_key(path: Path) -> list:
     return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", path.name.lower())]
 
 
-def load_body_images(gender: str = "feminine") -> list[Path]:
+def gender_asset_dir(gender: str, feminine_dir: Path, masculine_dir: Path) -> Path:
+    if gender == "feminine":
+        return feminine_dir
     if gender == "masculine":
-        body_dir = MASCULINE_BODY_DIR
-    elif gender == "feminine":
-        body_dir = BODY_DIR
-    else:
-        raise ValueError(f"Unsupported character body type: {gender}")
+        return masculine_dir
+    raise ValueError(f"Unsupported character body type: {gender}")
+
+
+def bangs_bottom_dir(gender: str) -> Path:
+    return gender_asset_dir(gender, BANGS_BOTTOM_DIR, MASCULINE_BANGS_BOTTOM_DIR)
+
+
+def marks_bottom_dir(gender: str) -> Path:
+    return gender_asset_dir(gender, MARKS_BOTTOM_DIR, MASCULINE_MARKS_BOTTOM_DIR)
+
+
+def load_body_images(gender: str = "feminine") -> list[Path]:
+    body_dir = gender_asset_dir(gender, BODY_DIR, MASCULINE_BODY_DIR)
     if not body_dir.is_dir():
         return []
     return sorted(
@@ -677,12 +703,7 @@ def load_body_images(gender: str = "feminine") -> list[Path]:
 
 
 def load_skin_images(face_name: str, gender: str = "feminine") -> list[Path]:
-    if gender == "masculine":
-        skin_dir = MASCULINE_SKIN_DIR
-    elif gender == "feminine":
-        skin_dir = SKIN_DIR
-    else:
-        raise ValueError(f"Unsupported character body type: {gender}")
+    skin_dir = gender_asset_dir(gender, SKIN_DIR, MASCULINE_SKIN_DIR)
     if not skin_dir.is_dir():
         return []
     return sorted(
@@ -699,12 +720,7 @@ def load_skin_images(face_name: str, gender: str = "feminine") -> list[Path]:
 
 
 def load_eye_images(gender: str = "feminine") -> list[Path]:
-    if gender == "masculine":
-        eyes_dir = MASCULINE_EYES_DIR
-    elif gender == "feminine":
-        eyes_dir = EYES_DIR
-    else:
-        raise ValueError(f"Unsupported character body type: {gender}")
+    eyes_dir = gender_asset_dir(gender, EYES_DIR, MASCULINE_EYES_DIR)
     if not eyes_dir.is_dir():
         return []
     return sorted(
@@ -723,12 +739,7 @@ def load_eye_images(gender: str = "feminine") -> list[Path]:
 
 
 def load_brow_images(gender: str = "feminine") -> list[Path]:
-    if gender == "masculine":
-        brow_dir = MASCULINE_BROWS_DIR
-    elif gender == "feminine":
-        brow_dir = BROWS_DIR
-    else:
-        raise ValueError(f"Unsupported character body type: {gender}")
+    brow_dir = gender_asset_dir(gender, BROWS_DIR, MASCULINE_BROWS_DIR)
     if not brow_dir.is_dir():
         return []
     return sorted(
@@ -737,56 +748,63 @@ def load_brow_images(gender: str = "feminine") -> list[Path]:
     )
 
 
-def load_nose_images() -> list[Path]:
-    if not NOSES_DIR.is_dir():
+def load_nose_images(gender: str = "feminine") -> list[Path]:
+    nose_dir = gender_asset_dir(gender, NOSES_DIR, MASCULINE_NOSES_DIR)
+    if not nose_dir.is_dir():
         return []
     return sorted(
-        (path for path in NOSES_DIR.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES),
+        (path for path in nose_dir.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES),
         key=natural_key,
     )
 
 
-def load_mouth_images() -> list[Path]:
-    if not MOUTHS_DIR.is_dir():
+def load_mouth_images(gender: str = "feminine") -> list[Path]:
+    mouth_dir = gender_asset_dir(gender, MOUTHS_DIR, MASCULINE_MOUTHS_DIR)
+    if not mouth_dir.is_dir():
         return []
     return sorted(
-        (path for path in MOUTHS_DIR.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES),
+        (path for path in mouth_dir.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES),
         key=natural_key,
     )
 
 
-def load_hair_images() -> list[Path]:
-    if not HAIR_DIR.is_dir():
+def load_hair_images(gender: str = "feminine") -> list[Path]:
+    hair_dir = gender_asset_dir(gender, HAIR_DIR, MASCULINE_HAIR_DIR)
+    if not hair_dir.is_dir():
         return []
     return sorted(
-        (path for path in HAIR_DIR.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES),
+        (path for path in hair_dir.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES),
         key=natural_key,
     )
 
 
-def load_bang_images() -> list[Path]:
-    if not BANGS_TOP_DIR.is_dir() or not BANGS_BOTTOM_DIR.is_dir():
+def load_bang_images(gender: str = "feminine") -> list[Path]:
+    top_dir = gender_asset_dir(gender, BANGS_TOP_DIR, MASCULINE_BANGS_TOP_DIR)
+    bottom_dir = gender_asset_dir(gender, BANGS_BOTTOM_DIR, MASCULINE_BANGS_BOTTOM_DIR)
+    if not top_dir.is_dir() or not bottom_dir.is_dir():
         return []
     return sorted(
         (
             top_path
-            for top_path in BANGS_TOP_DIR.iterdir()
+            for top_path in top_dir.iterdir()
             if top_path.suffix.lower() in IMAGE_SUFFIXES
-            and (BANGS_BOTTOM_DIR / top_path.name).is_file()
+            and (bottom_dir / top_path.name).is_file()
         ),
         key=natural_key,
     )
 
 
-def load_mark_images() -> list[Path]:
-    if not MARKS_TOP_DIR.is_dir() or not MARKS_BOTTOM_DIR.is_dir():
+def load_mark_images(gender: str = "feminine") -> list[Path]:
+    top_dir = gender_asset_dir(gender, MARKS_TOP_DIR, MASCULINE_MARKS_TOP_DIR)
+    bottom_dir = gender_asset_dir(gender, MARKS_BOTTOM_DIR, MASCULINE_MARKS_BOTTOM_DIR)
+    if not top_dir.is_dir() or not bottom_dir.is_dir():
         return []
     return sorted(
         (
             top_path
-            for top_path in MARKS_TOP_DIR.iterdir()
+            for top_path in top_dir.iterdir()
             if top_path.suffix.lower() in IMAGE_SUFFIXES
-            and (MARKS_BOTTOM_DIR / top_path.name).is_file()
+            and (bottom_dir / top_path.name).is_file()
         ),
         key=natural_key,
     )
@@ -879,12 +897,12 @@ class BodyView(discord.ui.View):
             ),
             "eyes": lambda: load_eye_images(view.gender),
             "brows": lambda: load_brow_images(view.gender),
-            "nose": load_nose_images,
-            "mouth": load_mouth_images,
-            "hair": load_hair_images,
-            "bangs": load_bang_images,
-            "mark1": load_mark_images,
-            "mark2": load_mark_images,
+            "nose": lambda: load_nose_images(view.gender),
+            "mouth": lambda: load_mouth_images(view.gender),
+            "hair": lambda: load_hair_images(view.gender),
+            "bangs": lambda: load_bang_images(view.gender),
+            "mark1": lambda: load_mark_images(view.gender),
+            "mark2": lambda: load_mark_images(view.gender),
             "facial_hair": load_facial_hair_images,
             "shirt": lambda: [SHIRT_IMAGE] if SHIRT_IMAGE.is_file() else [],
         }
@@ -922,14 +940,16 @@ class BodyView(discord.ui.View):
         if bangs:
             bangs_index = min(view.step_indices.get("bangs", 0), len(bangs) - 1)
             view.selected_bangs_top_image = bangs[bangs_index]
-            view.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / bangs[bangs_index].name
+            view.selected_bangs_bottom_image = (
+                bangs_bottom_dir(view.gender) / bangs[bangs_index].name
+            )
 
         for step in ("mark1", "mark2"):
             marks = view.step_images.get(step)
             if marks:
                 marks_index = min(view.step_indices.get(step, 0), len(marks) - 1)
                 top = marks[marks_index]
-                bottom = MARKS_BOTTOM_DIR / top.name
+                bottom = marks_bottom_dir(view.gender) / top.name
                 setattr(view, f"selected_{step}_top_image", top)
                 setattr(view, f"selected_{step}_bottom_image", bottom)
 
@@ -976,13 +996,15 @@ class BodyView(discord.ui.View):
             self.selected_hair_image = self.images[self.index]
         elif self.stage == "bangs":
             self.selected_bangs_top_image = self.images[self.index]
-            self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / self.images[self.index].name
+            self.selected_bangs_bottom_image = (
+                bangs_bottom_dir(self.gender) / self.images[self.index].name
+            )
         elif self.stage in {"mark1", "mark2"}:
             setattr(self, f"selected_{self.stage}_top_image", self.images[self.index])
             setattr(
                 self,
                 f"selected_{self.stage}_bottom_image",
-                MARKS_BOTTOM_DIR / self.images[self.index].name,
+                marks_bottom_dir(self.gender) / self.images[self.index].name,
             )
         elif self.stage == "facial_hair":
             self.selected_facial_hair_image = self.images[self.index]
@@ -1073,19 +1095,19 @@ class BodyView(discord.ui.View):
             hair_path = path if self.stage == "hair" else self.selected_hair_image
             bangs_top_path = path if self.stage == "bangs" else self.selected_bangs_top_image
             bangs_bottom_path = (
-                BANGS_BOTTOM_DIR / path.name
+                bangs_bottom_dir(self.gender) / path.name
                 if self.stage == "bangs"
                 else self.selected_bangs_bottom_image
             )
             mark1_top_path = path if self.stage == "mark1" else self.selected_mark1_top_image
             mark1_bottom_path = (
-                MARKS_BOTTOM_DIR / path.name
+                marks_bottom_dir(self.gender) / path.name
                 if self.stage == "mark1"
                 else self.selected_mark1_bottom_image
             )
             mark2_top_path = path if self.stage == "mark2" else self.selected_mark2_top_image
             mark2_bottom_path = (
-                MARKS_BOTTOM_DIR / path.name
+                marks_bottom_dir(self.gender) / path.name
                 if self.stage == "mark2"
                 else self.selected_mark2_bottom_image
             )
@@ -1231,13 +1253,19 @@ class BodyView(discord.ui.View):
             self.selected_hair_image = self.images[self.index]
         elif self.stage == "bangs":
             self.selected_bangs_top_image = self.images[self.index]
-            self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / self.images[self.index].name
+            self.selected_bangs_bottom_image = (
+                bangs_bottom_dir(self.gender) / self.images[self.index].name
+            )
         elif self.stage == "mark1":
             self.selected_mark1_top_image = self.images[self.index]
-            self.selected_mark1_bottom_image = MARKS_BOTTOM_DIR / self.images[self.index].name
+            self.selected_mark1_bottom_image = (
+                marks_bottom_dir(self.gender) / self.images[self.index].name
+            )
         elif self.stage == "mark2":
             self.selected_mark2_top_image = self.images[self.index]
-            self.selected_mark2_bottom_image = MARKS_BOTTOM_DIR / self.images[self.index].name
+            self.selected_mark2_bottom_image = (
+                marks_bottom_dir(self.gender) / self.images[self.index].name
+            )
         elif self.stage == "facial_hair":
             self.selected_facial_hair_image = self.images[self.index]
         elif self.stage == "hair_color":
@@ -1245,7 +1273,7 @@ class BodyView(discord.ui.View):
                 self.step_indices.get("bangs", 0)
             ]
             self.selected_bangs_bottom_image = (
-                BANGS_BOTTOM_DIR / self.selected_bangs_top_image.name
+                bangs_bottom_dir(self.gender) / self.selected_bangs_top_image.name
             )
         elif self.stage in {"mark1", "mark2"}:
             mark_path = self.images[self.index]
@@ -1253,7 +1281,7 @@ class BodyView(discord.ui.View):
             setattr(
                 self,
                 f"selected_{self.stage}_bottom_image",
-                MARKS_BOTTOM_DIR / mark_path.name,
+                marks_bottom_dir(self.gender) / mark_path.name,
             )
 
         self.stage = stage
@@ -1275,20 +1303,24 @@ class BodyView(discord.ui.View):
             self.selected_hair_image = self.images[self.index]
         elif stage == "bangs":
             self.selected_bangs_top_image = self.images[self.index]
-            self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / self.images[self.index].name
+            self.selected_bangs_bottom_image = (
+                bangs_bottom_dir(self.gender) / self.images[self.index].name
+            )
         elif stage == "hair_color":
             self.selected_hair_image = self.step_images["hair"][
                 self.step_indices.get("hair", 0)
             ]
             self.selected_bangs_top_image = self.images[self.index]
-            self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / self.images[self.index].name
+            self.selected_bangs_bottom_image = (
+                bangs_bottom_dir(self.gender) / self.images[self.index].name
+            )
         elif stage in {"mark1", "mark2"}:
             mark_path = self.images[self.index]
             setattr(self, f"selected_{stage}_top_image", mark_path)
             setattr(
                 self,
                 f"selected_{stage}_bottom_image",
-                MARKS_BOTTOM_DIR / mark_path.name,
+                marks_bottom_dir(self.gender) / mark_path.name,
             )
         elif stage == "facial_hair":
             self.selected_facial_hair_image = self.images[self.index]
@@ -1403,10 +1435,15 @@ class BodyView(discord.ui.View):
     async def finish_brows(self, interaction: discord.Interaction) -> None:
         self.selected_brow_image = self.images[self.index]
         self.step_indices["brows"] = self.index
-        nose_images = load_nose_images()
+        nose_images = load_nose_images(self.gender)
         if not nose_images:
+            nose_directory = (
+                "assets/masculine/noses"
+                if self.gender == "masculine"
+                else "assets/noses"
+            )
             await interaction.response.send_message(
-                "No nose images found in assets/noses.", ephemeral=True
+                f"No nose images found in {nose_directory}.", ephemeral=True
             )
             return
 
@@ -1420,10 +1457,15 @@ class BodyView(discord.ui.View):
     async def finish_nose(self, interaction: discord.Interaction) -> None:
         self.selected_nose_image = self.images[self.index]
         self.step_indices["nose"] = self.index
-        mouth_images = load_mouth_images()
+        mouth_images = load_mouth_images(self.gender)
         if not mouth_images:
+            mouth_directory = (
+                "assets/masculine/mouths"
+                if self.gender == "masculine"
+                else "assets/mouths"
+            )
             await interaction.response.send_message(
-                "No mouth images found in assets/mouths.", ephemeral=True
+                f"No mouth images found in {mouth_directory}.", ephemeral=True
             )
             return
 
@@ -1437,11 +1479,16 @@ class BodyView(discord.ui.View):
     async def finish_mouth(self, interaction: discord.Interaction) -> None:
         self.selected_mouth_image = self.images[self.index]
         self.step_indices["mouth"] = self.index
-        hair_images = load_hair_images()
-        bang_images = load_bang_images()
+        hair_images = load_hair_images(self.gender)
+        bang_images = load_bang_images(self.gender)
         if not hair_images:
+            hair_directory = (
+                "assets/masculine/hair"
+                if self.gender == "masculine"
+                else "assets/hair"
+            )
             await interaction.response.send_message(
-                "No hairstyle images found in assets/hair.", ephemeral=True
+                f"No hairstyle images found in {hair_directory}.", ephemeral=True
             )
             return
 
@@ -1452,7 +1499,9 @@ class BodyView(discord.ui.View):
             self.step_indices.setdefault("bangs", 0)
             selected_bangs = bang_images[self.step_indices["bangs"]]
             self.selected_bangs_top_image = selected_bangs
-            self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / selected_bangs.name
+            self.selected_bangs_bottom_image = (
+                bangs_bottom_dir(self.gender) / selected_bangs.name
+            )
         if self.hair_button is None:
             self.hair_button = CategoryButton("Hair", row=1, stage="hair")
             self.add_step_button(self.hair_button)
@@ -1461,10 +1510,15 @@ class BodyView(discord.ui.View):
     async def finish_hair(self, interaction: discord.Interaction) -> None:
         self.selected_hair_image = self.images[self.index]
         self.step_indices["hair"] = self.index
-        bang_images = load_bang_images()
+        bang_images = load_bang_images(self.gender)
         if not bang_images:
+            bangs_directory = (
+                "assets/masculine/bangs"
+                if self.gender == "masculine"
+                else "assets/bangs"
+            )
             await interaction.response.send_message(
-                "No bangs images found in assets/bangs.", ephemeral=True
+                f"No bangs images found in {bangs_directory}.", ephemeral=True
             )
             return
 
@@ -1477,17 +1531,24 @@ class BodyView(discord.ui.View):
 
     async def finish_bangs(self, interaction: discord.Interaction) -> None:
         self.selected_bangs_top_image = self.images[self.index]
-        self.selected_bangs_bottom_image = BANGS_BOTTOM_DIR / self.images[self.index].name
+        self.selected_bangs_bottom_image = (
+            bangs_bottom_dir(self.gender) / self.images[self.index].name
+        )
         self.step_indices["bangs"] = self.index
         if self.colors is not None:
             self.colors.add_hair_color_button()
         await self.select_stage(interaction, "hair_color")
 
     async def finish_hair_color(self, interaction: discord.Interaction) -> None:
-        mark_images = load_mark_images()
+        mark_images = load_mark_images(self.gender)
         if not mark_images:
+            marks_directory = (
+                "assets/masculine/marks"
+                if self.gender == "masculine"
+                else "assets/marks"
+            )
             await interaction.response.send_message(
-                "No Mark1/Mark2 images found in assets/marks.", ephemeral=True
+                f"No Mark1/Mark2 images found in {marks_directory}.", ephemeral=True
             )
             return
 
@@ -1505,13 +1566,17 @@ class BodyView(discord.ui.View):
 
     async def finish_mark1(self, interaction: discord.Interaction) -> None:
         self.selected_mark1_top_image = self.images[self.index]
-        self.selected_mark1_bottom_image = MARKS_BOTTOM_DIR / self.images[self.index].name
+        self.selected_mark1_bottom_image = (
+            marks_bottom_dir(self.gender) / self.images[self.index].name
+        )
         self.step_indices["mark1"] = self.index
         await self.select_stage(interaction, "mark2")
 
     async def finish_mark2(self, interaction: discord.Interaction) -> None:
         self.selected_mark2_top_image = self.images[self.index]
-        self.selected_mark2_bottom_image = MARKS_BOTTOM_DIR / self.images[self.index].name
+        self.selected_mark2_bottom_image = (
+            marks_bottom_dir(self.gender) / self.images[self.index].name
+        )
         self.step_indices["mark2"] = self.index
         facial_hair_images = load_facial_hair_images()
         if not facial_hair_images:

@@ -11,17 +11,13 @@ The 10 face-shape layers are composited with the base to provide 11 body shapes.
 Masculine eye layers are from the same creator's `eyes/eyes 1.png` through `eyes/eyes 11.png`; they are recolored with the selected eye and skin palettes.
 License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0): https://creativecommons.org/licenses/by-nc-sa/4.0/
 
-Brow image layers are from the same creator and source:
-Source files: brow/0.png and brow/brow 1.png through brow/brow 8.png.
-Masculine brow layers are stored separately from the original brow assets so their placement matches the masculine face.
-Nose image layers are from the same creator and source:
-Source files: nose/0.png and nose/nose 1.png through nose/nose 13.png.
-Mouth image layers are from the same creator and source:
-Source files: mouth/0.png and mouth/mouth 1.png through mouth/mouth 11.png.
-Bottom-layer hairstyle images are from the same creator and source; top-hair/bangs images were not downloaded.
-Source files: bottom layer hair/0.png, bhair 1.png through bhair 15.png, and bhair 17.png through bhair 30.png.
-Bangs layers are from the creator's top-hair set and its matching lower layers.
-Source values: 0, dreadlock fringe 1–2, thair 1–24, and thair natural 1–5 from `top hair/` and `thair bottom/`.
+Masculine brow layers are from the same creator's `brow/0.png` and `brow/brow 1.png` through `brow/brow 8.png`; they are stored separately so their placement matches the masculine face.
+Masculine nose layers are from `nose/0.png` and `nose/nose 1.png` through `nose/nose 13.png`.
+Masculine mouth layers are from `mouth/0.png` and `mouth/mouth 1.png` through `mouth/mouth 11.png`.
+Masculine Mark1/Mark2 layers are from the creator's shared `facial features/` and `facial features bottom/` options.
+Masculine hair and bangs are from `bottom layer hair/`, `top hair/`, and `thair bottom/`; the masculine top/bottom layers are kept separately and indexed in the creator's menu order.
+Masculine bottom-hair source files: `bottom layer hair/0.png`, `bhair 1.png` through `bhair 15.png`, and `bhair 17.png` through `bhair 30.png`.
+Masculine bangs source values: 0, dreadlock fringe 1–2, thair 1–24, and thair natural 1–5 from `top hair/` and `thair bottom/`.
 Mark1 and Mark2 use the creator's shared facial-feature layers.
 Source values: 0, freckles, elf ears, light freckles, beauty mark 1–3, eyebags, nose scar, cheek scar, eye scar, full body scars, small eye scar, and blush from `facial features/` and `facial features bottom/`.
 Facial hair uses `beards/0.png`, `beards/beard 1.png` through `beards/beard 12.png`, and `beards/sideburns.png` from Stardew Valley Character Creator (Masc version).
