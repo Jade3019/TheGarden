@@ -154,11 +154,6 @@ EYE_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "eye_colors.json").read_text()
 )
 BASE_EYE_SHADES = [tuple(shade) + (255,) for shade in EYE_PALETTES[0]["shades"]]
-MASCULINE_EYE_SHADE_INDICES = {
-    (129, 131, 211, 255): 1,
-    (150, 178, 255, 255): 2,
-    (213, 240, 255, 255): 3,
-}
 HAIR_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "hair_colors.json").read_text()
 )
@@ -349,6 +344,85 @@ def recolor_shirt_layer(
     return layer
 
 
+def fit_masculine_shirt_to_body(
+    shirt: Image.Image,
+    body_reference: Image.Image,
+    outline_color: tuple[int, int, int],
+) -> Image.Image:
+    if shirt.size != body_reference.size:
+        raise ValueError("Masculine shirt and body reference must have the same dimensions.")
+
+    fitted = shirt.copy()
+    shirt_pixels = shirt.load()
+    body_pixels = body_reference.load()
+    # Keep the collar intact and fit only the lower torso rows.
+    fit_start_y = round(shirt.height * 50 / 64)
+    for y in range(fit_start_y, shirt.height):
+        # Body references have white backgrounds; exclude those pixels from the silhouette.
+        body_xs = [
+            x
+            for x in range(body_reference.width)
+            if body_pixels[x, y][3] and body_pixels[x, y][:3] != (255, 255, 255)
+        ]
+        shirt_xs = [
+            x for x in range(shirt.width) if shirt_pixels[x, y][3]
+        ]
+        if not body_xs or not shirt_xs:
+            continue
+
+        target_left = min(body_xs) + 1
+        target_right = max(body_xs) - 1
+        target_width = target_right - target_left + 1
+        source_left = min(shirt_xs)
+        source_right = max(shirt_xs)
+        if shirt_pixels[source_left, y][:3] == outline_color:
+            source_left += 1
+        if shirt_pixels[source_right, y][:3] == outline_color:
+            source_right -= 1
+        if target_width <= 0 or source_left > source_right:
+            raise ValueError("Masculine shirt cannot be fitted to the body silhouette.")
+
+        row = shirt.crop((source_left, y, source_right + 1, y + 1))
+        row = row.resize((target_width, 1), Image.Resampling.NEAREST)
+        fitted.paste((0, 0, 0, 0), (0, y, fitted.width, y + 1))
+        fitted.alpha_composite(row, (target_left, y))
+    return fitted
+
+
+def align_overlay_to_reference(
+    layer: Image.Image, reference: Image.Image
+) -> Image.Image:
+    layer_bounds = layer.getchannel("A").getbbox()
+    reference_bounds = reference.getchannel("A").getbbox()
+    if layer_bounds is None or reference_bounds is None:
+        return layer
+
+    offset_x = round(
+        (
+            reference_bounds[0]
+            + reference_bounds[2]
+            - layer_bounds[0]
+            - layer_bounds[2]
+        )
+        / 2
+    )
+    offset_y = round(
+        (
+            reference_bounds[1]
+            + reference_bounds[3]
+            - layer_bounds[1]
+            - layer_bounds[3]
+        )
+        / 2
+    )
+    if offset_x == 0 and offset_y == 0:
+        return layer
+
+    aligned = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    aligned.alpha_composite(layer, (offset_x, offset_y))
+    return aligned
+
+
 def render_eye_preview(
     skin_path: Path,
     eye_path: Path,
@@ -371,6 +445,8 @@ def render_eye_preview(
     closed_eyes: bool = False,
     compensate_brow_dialogue_flip: bool = False,
     facial_hair_path: Path | None = None,
+    expression_brow_reference_path: Path | None = None,
+    expression_mouth_reference_path: Path | None = None,
 ) -> io.BytesIO:
     skin = Image.open(skin_path).convert("RGBA")
     eyes = Image.open(eye_path).convert("RGBA")
@@ -466,8 +542,9 @@ def render_eye_preview(
         for source, target in zip(BASE_EYE_SHADES, target_shades)
     }
     if masculine_eyes:
-        for source, shade_index in MASCULINE_EYE_SHADE_INDICES.items():
-            shade_map[source] = tuple(target_shades[shade_index]) + (255,)
+        shade_map = {
+            BASE_EYE_SHADES[0]: tuple(target_shades[0]) + (255,)
+        }
     sad_eye_overlay = None
     if eye_overlay_path is None and not closed_eyes:
         if masculine_eyes:
@@ -507,20 +584,36 @@ def render_eye_preview(
                 elif shade_index is not None:
                     target_shade = target_shades[shade_index]
                     eye_overlay_pixels[x, y] = (*target_shade, alpha)
+        if masculine_eyes:
+            eye_overlay = align_overlay_to_reference(eye_overlay, eyes)
         sad_eye_overlay = eye_overlay
     if closed_eyes:
         with Image.open(HAPPY_CLOSED_EYES_IMAGE) as source:
             closed_eye_layer = source.convert("RGBA")
         if closed_eye_layer.size != skin.size:
             raise ValueError("Happy closed-eye overlay must match the profile size.")
+        if masculine_eyes:
+            closed_eye_layer = align_overlay_to_reference(closed_eye_layer, eyes)
         skin.alpha_composite(closed_eye_layer)
 
     if shirt_path is not None:
         shirt = recolor_shirt_layer(shirt_path, shirt_color_id, skin_shade_map)
+        if masculine_eyes:
+            centered_shirt = Image.new("RGBA", shirt.size, (0, 0, 0, 0))
+            centered_shirt.alpha_composite(shirt, (1, 0))
+            shirt = fit_masculine_shirt_to_body(
+                centered_shirt,
+                skin_reference.resize(shirt.size, Image.Resampling.NEAREST),
+                tuple(SHIRT_PALETTES[shirt_color_id - 1]["shades"][0]),
+            )
         shirt = shirt.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(shirt)
     if brow_path is not None and eye_overlay_path is None:
-        brows = Image.open(brow_path).convert("RGBA")
+        brows = (
+            recolor_mark_layer(brow_path, skin_shade_map)
+            if brow_path.parent == MASCULINE_BROWS_DIR
+            else Image.open(brow_path).convert("RGBA")
+        )
         brows = brows.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(brows)
     if sad_eye_overlay is not None:
@@ -529,6 +622,14 @@ def render_eye_preview(
             brows = recolor_sad_brow_layer(brow_path, skin_shade_map)
             brows = brows.resize(skin.size, Image.Resampling.NEAREST)
             brows = tighten_sad_brow_spacing(brows)
+            if masculine_eyes and expression_brow_reference_path is not None:
+                with Image.open(expression_brow_reference_path) as source:
+                    brow_reference = source.convert("RGBA")
+                if brow_reference.size != skin.size:
+                    brow_reference = brow_reference.resize(
+                        skin.size, Image.Resampling.NEAREST
+                    )
+                brows = align_overlay_to_reference(brows, brow_reference)
             if compensate_brow_dialogue_flip:
                 brows = compensate_for_dialogue_flip(brows)
             skin.alpha_composite(brows)
@@ -548,6 +649,14 @@ def render_eye_preview(
                 )
                 mouth = flipped_mouth
         mouth = mouth.resize(skin.size, Image.Resampling.NEAREST)
+        if masculine_eyes and expression_mouth_reference_path is not None:
+            with Image.open(expression_mouth_reference_path) as source:
+                mouth_reference = source.convert("RGBA")
+            if mouth_reference.size != skin.size:
+                mouth_reference = mouth_reference.resize(
+                    skin.size, Image.Resampling.NEAREST
+                )
+            mouth = align_overlay_to_reference(mouth, mouth_reference)
         skin.alpha_composite(mouth)
     if facial_hair_path is not None:
         facial_hair = recolor_facial_hair_layer(
@@ -1887,10 +1996,6 @@ class FarmButton(discord.ui.Button):
 
 def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.Image:
     portrait_path = PROGRESS_FILE.parent / "portraits" / f"{owner_id}.png"
-    if expression == "normal":
-        with Image.open(portrait_path) as source:
-            return source.convert("RGBA")
-
     saved = read_progress(owner_id) or {}
     body = BodyView.restore(owner_id, saved)
     if (
@@ -1922,6 +2027,11 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
         brow_path = None
     elif expression == "sad":
         brow_path = SAD_BROWS_IMAGE
+    expression_brow_reference_path = None
+    expression_mouth_reference_path = None
+    if body.gender == "masculine" and expression in {"happy", "sad"}:
+        expression_brow_reference_path = MASCULINE_BROWS_DIR / "1.png"
+        expression_mouth_reference_path = MASCULINE_MOUTHS_DIR / "1.png"
     portrait_file = render_eye_preview(
         body.selected_skin_image,
         eye_path,
@@ -1943,9 +2053,15 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
         closed_eyes=expression == "happy",
         compensate_brow_dialogue_flip=expression == "sad",
         facial_hair_path=body.selected_facial_hair_image,
+        expression_brow_reference_path=expression_brow_reference_path,
+        expression_mouth_reference_path=expression_mouth_reference_path,
     )
     with Image.open(portrait_file) as source:
-        return source.convert("RGBA")
+        portrait = source.convert("RGBA")
+    if expression == "normal":
+        portrait_path.parent.mkdir(parents=True, exist_ok=True)
+        portrait.save(portrait_path, format="PNG")
+    return portrait
 
 
 class ArrivalContinueView(discord.ui.View):
@@ -1993,13 +2109,14 @@ class ArrivalContinueView(discord.ui.View):
                 )
                 self.stop()
                 return
+            portrait = render_profile_portrait(self.owner_id)
             await interaction.response.edit_message(
                 content=None,
                 attachments=[
                     discord.File(
                         dialogue_scene(
                             "\n".join(JOURNEY_CHOICES),
-                            player_portrait=portrait_path,
+                            player_portrait=portrait,
                             scale=3,
                         ),
                         filename="scene.png",
@@ -3029,6 +3146,8 @@ class FarmBot(discord.Client):
                     else BODY_DIR
                 )
                 portrait_path = body_dir / "1.png"
+            elif saved.get("steps"):
+                render_profile_portrait(message.author.id)
             view = InventoryTestView(
                 message.author.id,
                 saved.get("character_name") or message.author.display_name,
