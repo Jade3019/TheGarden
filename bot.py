@@ -146,11 +146,6 @@ EYE_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "eye_colors.json").read_text()
 )
 BASE_EYE_SHADES = [tuple(shade) + (255,) for shade in EYE_PALETTES[0]["shades"]]
-MASCULINE_EYE_SHADE_INDICES = {
-    (129, 131, 211, 255): 1,
-    (150, 178, 255, 255): 2,
-    (213, 240, 255, 255): 3,
-}
 HAIR_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "hair_colors.json").read_text()
 )
@@ -449,9 +444,6 @@ def render_eye_preview(
         source: tuple(max(0, min(255, channel)) for channel in target) + (255,)
         for source, target in zip(BASE_EYE_SHADES, target_shades)
     }
-    if masculine_eyes:
-        for source, shade_index in MASCULINE_EYE_SHADE_INDICES.items():
-            shade_map[source] = tuple(target_shades[shade_index]) + (255,)
     sad_eye_overlay = None
     if eye_overlay_path is None and not closed_eyes:
         if masculine_eyes:
