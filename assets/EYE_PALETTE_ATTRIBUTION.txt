@@ -22,6 +22,9 @@ Bangs layers are from the creator's top-hair set and its matching lower layers.
 Source values: 0, dreadlock fringe 1–2, thair 1–24, and thair natural 1–5 from `top hair/` and `thair bottom/`.
 Mark1 and Mark2 use the creator's shared facial-feature layers.
 Source values: 0, freckles, elf ears, light freckles, beauty mark 1–3, eyebags, nose scar, cheek scar, eye scar, full body scars, small eye scar, and blush from `facial features/` and `facial features bottom/`.
+Facial hair uses `beards/0.png`, `beards/beard 1.png` through `beards/beard 12.png`, and `beards/sideburns.png` from Stardew Valley Character Creator (Masc version).
+Source: https://jazzybee.itch.io/sdv-creator-masc
+Facial-hair colors are adapted with the creator's hair palettes and the selected skin palette.
 Bangs are from the creator's separate two-layer top-hair set.
 Source files: top hair and thair bottom options 0, dreadlock fringe 1–2, thair 1–24, and thair natural 1–5.
 

@@ -34,6 +34,7 @@ BANGS_TOP_DIR = Path(__file__).parent / "assets" / "bangs" / "top"
 BANGS_BOTTOM_DIR = Path(__file__).parent / "assets" / "bangs" / "bottom"
 MARKS_TOP_DIR = Path(__file__).parent / "assets" / "marks" / "top"
 MARKS_BOTTOM_DIR = Path(__file__).parent / "assets" / "marks" / "bottom"
+FACIAL_HAIR_DIR = Path(__file__).parent / "assets" / "facial_hair"
 PROGRESS_FILE = Path(__file__).parent / "data" / "farm_progress.json"
 FARMS_DIR = Path(__file__).parent / "assets" / "farms"
 ROOM_IMAGE = Path(__file__).parent / "room_edits" / "image.png"
@@ -229,6 +230,22 @@ def recolor_hair_layer(path: Path, color_id: int) -> Image.Image:
     return layer
 
 
+def recolor_facial_hair_layer(
+    path: Path,
+    hair_color_id: int,
+    skin_shade_map: dict[tuple[int, int, int], tuple[int, int, int]],
+) -> Image.Image:
+    layer = recolor_hair_layer(path, hair_color_id)
+    pixels = layer.load()
+    for y in range(layer.height):
+        for x in range(layer.width):
+            red, green, blue, alpha = pixels[x, y]
+            replacement = skin_shade_map.get((red, green, blue))
+            if replacement is not None:
+                pixels[x, y] = (*replacement, alpha)
+    return layer
+
+
 def recolor_mark_layer(
     path: Path, skin_shade_map: dict[tuple[int, int, int], tuple[int, int, int]]
 ) -> Image.Image:
@@ -339,6 +356,7 @@ def render_eye_preview(
     mouth_flip_vertical: bool = False,
     closed_eyes: bool = False,
     compensate_brow_dialogue_flip: bool = False,
+    facial_hair_path: Path | None = None,
 ) -> io.BytesIO:
     skin = Image.open(skin_path).convert("RGBA")
     eyes = Image.open(eye_path).convert("RGBA")
@@ -480,6 +498,12 @@ def render_eye_preview(
                 mouth = flipped_mouth
         mouth = mouth.resize(skin.size, Image.Resampling.NEAREST)
         skin.alpha_composite(mouth)
+    if facial_hair_path is not None:
+        facial_hair = recolor_facial_hair_layer(
+            facial_hair_path, hair_color_id, skin_shade_map
+        )
+        facial_hair = facial_hair.resize(skin.size, Image.Resampling.NEAREST)
+        skin.alpha_composite(facial_hair)
     for mark_path in (mark1_top_path, mark2_top_path):
         if mark_path is not None:
             mark = recolor_mark_layer(mark_path, skin_shade_map)
@@ -716,6 +740,19 @@ def load_mark_images() -> list[Path]:
     )
 
 
+def load_facial_hair_images() -> list[Path]:
+    if not FACIAL_HAIR_DIR.is_dir():
+        return []
+    return sorted(
+        (
+            path
+            for path in FACIAL_HAIR_DIR.iterdir()
+            if path.suffix.lower() in IMAGE_SUFFIXES
+        ),
+        key=natural_key,
+    )
+
+
 class BodyView(discord.ui.View):
     def __init__(
         self,
@@ -750,6 +787,7 @@ class BodyView(discord.ui.View):
         self.selected_mark1_bottom_image: Path | None = None
         self.selected_mark2_top_image: Path | None = None
         self.selected_mark2_bottom_image: Path | None = None
+        self.selected_facial_hair_image: Path | None = None
         self.hair_color_id = 1
         self.shirt_color_id = 1
         self.eyes_button: CategoryButton | None = None
@@ -760,6 +798,7 @@ class BodyView(discord.ui.View):
         self.bangs_button: CategoryButton | None = None
         self.mark1_button: CategoryButton | None = None
         self.mark2_button: CategoryButton | None = None
+        self.facial_hair_button: CategoryButton | None = None
         self.shirt_button: CategoryButton | None = None
         self.shape_button = CategoryButton("Shape", row=1, stage="shape", selected=True)
         self.done_button = DoneButton("Shape Done", row=1)
@@ -794,6 +833,7 @@ class BodyView(discord.ui.View):
             "bangs": load_bang_images,
             "mark1": load_mark_images,
             "mark2": load_mark_images,
+            "facial_hair": load_facial_hair_images,
             "shirt": lambda: [SHIRT_IMAGE] if SHIRT_IMAGE.is_file() else [],
         }
         for step in saved.get("steps", []):
@@ -841,6 +881,13 @@ class BodyView(discord.ui.View):
                 setattr(view, f"selected_{step}_top_image", top)
                 setattr(view, f"selected_{step}_bottom_image", bottom)
 
+        facial_hair = view.step_images.get("facial_hair")
+        if facial_hair:
+            facial_hair_index = min(
+                view.step_indices.get("facial_hair", 0), len(facial_hair) - 1
+            )
+            view.selected_facial_hair_image = facial_hair[facial_hair_index]
+
         for step, label in (
             ("eyes", "Eyes"),
             ("brows", "Brows"),
@@ -850,6 +897,7 @@ class BodyView(discord.ui.View):
             ("bangs", "Bangs"),
             ("mark1", "Mark1"),
             ("mark2", "Mark2"),
+            ("facial_hair", "Facial Hair"),
             ("shirt", "Shirt"),
         ):
             if step in view.step_images:
@@ -884,6 +932,8 @@ class BodyView(discord.ui.View):
                 f"selected_{self.stage}_bottom_image",
                 MARKS_BOTTOM_DIR / self.images[self.index].name,
             )
+        elif self.stage == "facial_hair":
+            self.selected_facial_hair_image = self.images[self.index]
 
         if self.test_mode:
             return
@@ -924,6 +974,7 @@ class BodyView(discord.ui.View):
             "hair_color": "Hair Color",
             "mark1": "Mark1",
             "mark2": "Mark2",
+            "facial_hair": "Facial Hair",
             "shirt": "Shirt",
             "shirt_color": "Shirt Color",
         }[self.stage]
@@ -935,12 +986,34 @@ class BodyView(discord.ui.View):
             label_index = self.hair_color_id
         elif self.stage == "brows":
             label_index = self.index
-        elif self.stage in {"nose", "mouth", "hair", "bangs", "mark1", "mark2"}:
+        elif self.stage in {
+            "nose",
+            "mouth",
+            "hair",
+            "bangs",
+            "mark1",
+            "mark2",
+            "facial_hair",
+        }:
             label_index = self.index
         else:
             label_index = self.index + 1
         self.face.label = f"{kind} {label_index}"
-        if self.stage in {"eyes", "eye_color", "brows", "nose", "mouth", "hair", "bangs", "hair_color", "mark1", "mark2", "shirt", "shirt_color"} and self.selected_skin_image:
+        if self.stage in {
+            "eyes",
+            "eye_color",
+            "brows",
+            "nose",
+            "mouth",
+            "hair",
+            "bangs",
+            "hair_color",
+            "mark1",
+            "mark2",
+            "facial_hair",
+            "shirt",
+            "shirt_color",
+        } and self.selected_skin_image:
             eye_path = path if self.stage == "eyes" else self.selected_eye_image
             brow_path = path if self.stage == "brows" else self.selected_brow_image
             nose_path = path if self.stage == "nose" else self.selected_nose_image
@@ -964,23 +1037,29 @@ class BodyView(discord.ui.View):
                 if self.stage == "mark2"
                 else self.selected_mark2_bottom_image
             )
+            facial_hair_path = (
+                path
+                if self.stage == "facial_hair"
+                else self.selected_facial_hair_image
+            )
             preview = render_eye_preview(
                 self.selected_skin_image,
                 eye_path,
                 self.eye_color_id,
-                brow_path,
-                nose_path,
-                mouth_path,
-                hair_path,
-                bangs_top_path,
-                bangs_bottom_path,
-                self.hair_color_id,
-                mark1_top_path,
-                mark1_bottom_path,
-                mark2_top_path,
-                mark2_bottom_path,
-                SHIRT_IMAGE if "shirt" in self.step_images else None,
-                self.shirt_color_id,
+                brow_path=brow_path,
+                nose_path=nose_path,
+                mouth_path=mouth_path,
+                hair_path=hair_path,
+                bangs_top_path=bangs_top_path,
+                bangs_bottom_path=bangs_bottom_path,
+                hair_color_id=self.hair_color_id,
+                mark1_top_path=mark1_top_path,
+                mark1_bottom_path=mark1_bottom_path,
+                mark2_top_path=mark2_top_path,
+                mark2_bottom_path=mark2_bottom_path,
+                shirt_path=SHIRT_IMAGE if "shirt" in self.step_images else None,
+                shirt_color_id=self.shirt_color_id,
+                facial_hair_path=facial_hair_path,
             )
             return discord.File(preview, filename="character.png")
         return discord.File(path, filename=f"body{path.suffix.lower()}")
@@ -1016,6 +1095,7 @@ class BodyView(discord.ui.View):
             "bangs": self.bangs_button,
             "mark1": self.mark1_button,
             "mark2": self.mark2_button,
+            "facial_hair": self.facial_hair_button,
             "shirt": self.shirt_button,
         }
         for stage, button in category_buttons.items():
@@ -1040,6 +1120,7 @@ class BodyView(discord.ui.View):
             "hair_color": "Hair Color Done",
             "mark1": "Mark1 Done",
             "mark2": "Mark2 Done",
+            "facial_hair": "Facial Hair Done",
             "shirt": "Shirt Done",
             "shirt_color": "Shirt Color Done",
         }[self.stage]
@@ -1105,6 +1186,8 @@ class BodyView(discord.ui.View):
         elif self.stage == "mark2":
             self.selected_mark2_top_image = self.images[self.index]
             self.selected_mark2_bottom_image = MARKS_BOTTOM_DIR / self.images[self.index].name
+        elif self.stage == "facial_hair":
+            self.selected_facial_hair_image = self.images[self.index]
         elif self.stage == "hair_color":
             self.selected_bangs_top_image = self.step_images["bangs"][
                 self.step_indices.get("bangs", 0)
@@ -1155,6 +1238,8 @@ class BodyView(discord.ui.View):
                 f"selected_{stage}_bottom_image",
                 MARKS_BOTTOM_DIR / mark_path.name,
             )
+        elif stage == "facial_hair":
+            self.selected_facial_hair_image = self.images[self.index]
         self.update_stage_buttons()
         preview = self.current()
 
@@ -1195,6 +1280,8 @@ class BodyView(discord.ui.View):
             await self.finish_mark1(interaction)
         elif self.stage == "mark2":
             await self.finish_mark2(interaction)
+        elif self.stage == "facial_hair":
+            await self.finish_facial_hair(interaction)
         elif self.stage == "shirt":
             await self.select_stage(interaction, "shirt_color")
         elif self.stage == "shirt_color":
@@ -1369,6 +1456,25 @@ class BodyView(discord.ui.View):
         self.selected_mark2_top_image = self.images[self.index]
         self.selected_mark2_bottom_image = MARKS_BOTTOM_DIR / self.images[self.index].name
         self.step_indices["mark2"] = self.index
+        facial_hair_images = load_facial_hair_images()
+        if not facial_hair_images:
+            await interaction.response.send_message(
+                "No facial hair images found in assets/facial_hair.", ephemeral=True
+            )
+            return
+
+        self.step_images["facial_hair"] = facial_hair_images
+        self.step_indices.setdefault("facial_hair", 0)
+        if self.facial_hair_button is None:
+            self.facial_hair_button = CategoryButton(
+                "Facial Hair", row=1, stage="facial_hair"
+            )
+            self.add_step_button(self.facial_hair_button)
+        await self.select_stage(interaction, "facial_hair")
+
+    async def finish_facial_hair(self, interaction: discord.Interaction) -> None:
+        self.selected_facial_hair_image = self.images[self.index]
+        self.step_indices["facial_hair"] = self.index
         if not SHIRT_IMAGE.is_file():
             await interaction.response.send_message(
                 "No shirt image found in assets/shirt.", ephemeral=True
@@ -1714,6 +1820,7 @@ def render_profile_portrait(owner_id: int, expression: str = "normal") -> Image.
         shirt_color_id=body.shirt_color_id,
         closed_eyes=expression == "happy",
         compensate_brow_dialogue_flip=expression == "sad",
+        facial_hair_path=body.selected_facial_hair_image,
     )
     with Image.open(portrait_file) as source:
         return source.convert("RGBA")
@@ -2654,9 +2761,7 @@ class MainMenuView(discord.ui.View):
                 await show_farm_picker(interaction.message, self.owner_id)
                 self.stop()
                 return
-            await interaction.response.edit_message(
-                content="Loading your save file.", attachments=[], view=None
-            )
+            await interaction.response.defer()
             await begin_portrait_creation(interaction.message, self.owner_id, saved)
             self.stop()
             return
