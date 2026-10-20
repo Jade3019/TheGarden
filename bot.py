@@ -25,6 +25,7 @@ BODY_DIR = Path(__file__).parent / "assets" / "bodies"
 SKIN_DIR = Path(__file__).parent / "assets" / "skincolors"
 MASCULINE_BODY_DIR = Path(__file__).parent / "assets" / "masculine" / "bodies"
 MASCULINE_SKIN_DIR = Path(__file__).parent / "assets" / "masculine" / "skincolors"
+MASCULINE_EYES_DIR = Path(__file__).parent / "assets" / "masculine" / "eyes"
 EYES_DIR = Path(__file__).parent / "assets" / "eyes"
 BROWS_DIR = Path(__file__).parent / "assets" / "brows"
 NOSES_DIR = Path(__file__).parent / "assets" / "noses"
@@ -145,6 +146,11 @@ EYE_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "eye_colors.json").read_text()
 )
 BASE_EYE_SHADES = [tuple(shade) + (255,) for shade in EYE_PALETTES[0]["shades"]]
+MASCULINE_EYE_SHADE_INDICES = {
+    (129, 131, 211, 255): 1,
+    (150, 178, 255, 255): 2,
+    (213, 240, 255, 255): 3,
+}
 HAIR_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "hair_colors.json").read_text()
 )
@@ -360,22 +366,37 @@ def render_eye_preview(
 ) -> io.BytesIO:
     skin = Image.open(skin_path).convert("RGBA")
     eyes = Image.open(eye_path).convert("RGBA")
-    eye_match = re.fullmatch(r"(\d+)\.eyeskin1", eye_path.stem, re.IGNORECASE)
+    masculine_eyes = eye_path.parent == MASCULINE_EYES_DIR
+    eye_match = re.fullmatch(
+        r"\d+" if masculine_eyes else r"(\d+)\.eyeskin1",
+        eye_path.stem,
+        re.IGNORECASE,
+    )
     if eye_match is None:
         raise ValueError(f"Unexpected eye asset name: {eye_path.name}")
     skin_match = re.fullmatch(r"(\d+)\.skincolor\d+", skin_path.stem, re.IGNORECASE)
     if skin_match is None:
         raise ValueError(f"Unexpected skin asset name: {skin_path.name}")
-    eye_reference = Image.open(BODY_DIR / f"{eye_match.group(1)}.png").convert("RGBA")
     skin_reference_dir = (
         MASCULINE_BODY_DIR
         if skin_path.parent == MASCULINE_SKIN_DIR
         else BODY_DIR
     )
+    eye_reference = (
+        None
+        if masculine_eyes
+        else Image.open(BODY_DIR / f"{eye_match.group(1)}.png").convert("RGBA")
+    )
     skin_reference = Image.open(
         skin_reference_dir / f"{skin_match.group(1)}.png"
     ).convert("RGBA")
-    if skin.size != eyes.size or eyes.size != eye_reference.size or skin.size != skin_reference.size:
+    if masculine_eyes:
+        eyes = eyes.resize(skin.size, Image.Resampling.NEAREST)
+    if (
+        skin.size != eyes.size
+        or (eye_reference is not None and skin.size != eye_reference.size)
+        or skin.size != skin_reference.size
+    ):
         raise ValueError("Skin, eye, and reference images must have the same dimensions.")
 
     skin_shade_map: dict[tuple[int, int, int], tuple[int, int, int]] = {}
@@ -428,16 +449,30 @@ def render_eye_preview(
         source: tuple(max(0, min(255, channel)) for channel in target) + (255,)
         for source, target in zip(BASE_EYE_SHADES, target_shades)
     }
-    skin_pixels = skin.load()
-    eye_pixels = eyes.load()
-    reference_pixels = eye_reference.load()
+    if masculine_eyes:
+        for source, shade_index in MASCULINE_EYE_SHADE_INDICES.items():
+            shade_map[source] = tuple(target_shades[shade_index]) + (255,)
     sad_eye_overlay = None
-    if eye_overlay_path is None:
-        for y in range(85, min(146, skin.height)):
-            for x in range(skin.width):
-                eye_pixel = eye_pixels[x, y]
-                if eye_pixel != reference_pixels[x, y]:
-                    if not closed_eyes:
+    if eye_overlay_path is None and not closed_eyes:
+        if masculine_eyes:
+            eye_pixels = eyes.load()
+            for y in range(eyes.height):
+                for x in range(eyes.width):
+                    red, green, blue, alpha = eye_pixels[x, y]
+                    replacement = shade_map.get((red, green, blue, 255))
+                    if replacement is None:
+                        replacement = skin_shade_map.get((red, green, blue))
+                    if replacement is not None:
+                        eye_pixels[x, y] = (*replacement[:3], alpha)
+            skin.alpha_composite(eyes)
+        else:
+            skin_pixels = skin.load()
+            eye_pixels = eyes.load()
+            reference_pixels = eye_reference.load()
+            for y in range(85, min(146, skin.height)):
+                for x in range(skin.width):
+                    eye_pixel = eye_pixels[x, y]
+                    if eye_pixel != reference_pixels[x, y]:
                         skin_pixels[x, y] = shade_map.get(eye_pixel, eye_pixel)
     if eye_overlay_path is not None:
         with Image.open(eye_overlay_path) as source:
@@ -662,15 +697,25 @@ def load_skin_images(face_name: str, gender: str = "feminine") -> list[Path]:
     )
 
 
-def load_eye_images() -> list[Path]:
-    if not EYES_DIR.is_dir():
+def load_eye_images(gender: str = "feminine") -> list[Path]:
+    if gender == "masculine":
+        eyes_dir = MASCULINE_EYES_DIR
+    elif gender == "feminine":
+        eyes_dir = EYES_DIR
+    else:
+        raise ValueError(f"Unsupported character body type: {gender}")
+    if not eyes_dir.is_dir():
         return []
     return sorted(
         (
-            p
-            for p in EYES_DIR.iterdir()
-            if re.fullmatch(r"\d+\.eyeskin1", p.stem.lower())
-            and p.suffix.lower() in IMAGE_SUFFIXES
+            path
+            for path in eyes_dir.iterdir()
+            if (
+                re.fullmatch(r"\d+", path.stem)
+                if gender == "masculine"
+                else re.fullmatch(r"\d+\.eyeskin1", path.stem.lower())
+            )
+            and path.suffix.lower() in IMAGE_SUFFIXES
         ),
         key=natural_key,
     )
@@ -825,7 +870,7 @@ class BodyView(discord.ui.View):
             "skin": lambda: load_skin_images(
                 view.selected_face or "", view.gender
             ),
-            "eyes": load_eye_images,
+            "eyes": lambda: load_eye_images(view.gender),
             "brows": load_brow_images,
             "nose": load_nose_images,
             "mouth": load_mouth_images,
@@ -1307,7 +1352,7 @@ class BodyView(discord.ui.View):
 
     async def finish_skin(self, interaction: discord.Interaction) -> None:
         self.selected_skin_image = self.images[self.index]
-        eye_images = load_eye_images()
+        eye_images = load_eye_images(self.gender)
         if not eye_images:
             await interaction.response.send_message(
                 "No eye images found in assets/eyes yet.", ephemeral=True
