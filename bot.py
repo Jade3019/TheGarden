@@ -26,6 +26,7 @@ SKIN_DIR = Path(__file__).parent / "assets" / "skincolors"
 MASCULINE_BODY_DIR = Path(__file__).parent / "assets" / "masculine" / "bodies"
 MASCULINE_SKIN_DIR = Path(__file__).parent / "assets" / "masculine" / "skincolors"
 MASCULINE_EYES_DIR = Path(__file__).parent / "assets" / "masculine" / "eyes"
+MASCULINE_BROWS_DIR = Path(__file__).parent / "assets" / "masculine" / "brows"
 EYES_DIR = Path(__file__).parent / "assets" / "eyes"
 BROWS_DIR = Path(__file__).parent / "assets" / "brows"
 NOSES_DIR = Path(__file__).parent / "assets" / "noses"
@@ -146,6 +147,11 @@ EYE_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "eye_colors.json").read_text()
 )
 BASE_EYE_SHADES = [tuple(shade) + (255,) for shade in EYE_PALETTES[0]["shades"]]
+MASCULINE_EYE_SHADE_INDICES = {
+    (129, 131, 211, 255): 1,
+    (150, 178, 255, 255): 2,
+    (213, 240, 255, 255): 3,
+}
 HAIR_PALETTES = json.loads(
     (Path(__file__).parent / "assets" / "hair_colors.json").read_text()
 )
@@ -444,6 +450,9 @@ def render_eye_preview(
         source: tuple(max(0, min(255, channel)) for channel in target) + (255,)
         for source, target in zip(BASE_EYE_SHADES, target_shades)
     }
+    if masculine_eyes:
+        for source, shade_index in MASCULINE_EYE_SHADE_INDICES.items():
+            shade_map[source] = tuple(target_shades[shade_index]) + (255,)
     sad_eye_overlay = None
     if eye_overlay_path is None and not closed_eyes:
         if masculine_eyes:
@@ -713,11 +722,17 @@ def load_eye_images(gender: str = "feminine") -> list[Path]:
     )
 
 
-def load_brow_images() -> list[Path]:
-    if not BROWS_DIR.is_dir():
+def load_brow_images(gender: str = "feminine") -> list[Path]:
+    if gender == "masculine":
+        brow_dir = MASCULINE_BROWS_DIR
+    elif gender == "feminine":
+        brow_dir = BROWS_DIR
+    else:
+        raise ValueError(f"Unsupported character body type: {gender}")
+    if not brow_dir.is_dir():
         return []
     return sorted(
-        (path for path in BROWS_DIR.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES),
+        (path for path in brow_dir.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES),
         key=natural_key,
     )
 
@@ -863,7 +878,7 @@ class BodyView(discord.ui.View):
                 view.selected_face or "", view.gender
             ),
             "eyes": lambda: load_eye_images(view.gender),
-            "brows": load_brow_images,
+            "brows": lambda: load_brow_images(view.gender),
             "nose": load_nose_images,
             "mouth": load_mouth_images,
             "hair": load_hair_images,
@@ -1366,10 +1381,15 @@ class BodyView(discord.ui.View):
         await self.select_stage(interaction, "eye_color")
 
     async def finish_eye_color(self, interaction: discord.Interaction) -> None:
-        brow_images = load_brow_images()
+        brow_images = load_brow_images(self.gender)
         if not brow_images:
+            brow_directory = (
+                "assets/masculine/brows"
+                if self.gender == "masculine"
+                else "assets/brows"
+            )
             await interaction.response.send_message(
-                "No brow images found in assets/brows.", ephemeral=True
+                f"No brow images found in {brow_directory}.", ephemeral=True
             )
             return
 

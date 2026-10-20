@@ -13,6 +13,7 @@ License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
 
 Brow image layers are from the same creator and source:
 Source files: brow/0.png and brow/brow 1.png through brow/brow 8.png.
+Masculine brow layers are stored separately from the original brow assets so their placement matches the masculine face.
 Nose image layers are from the same creator and source:
 Source files: nose/0.png and nose/nose 1.png through nose/nose 13.png.
 Mouth image layers are from the same creator and source:
