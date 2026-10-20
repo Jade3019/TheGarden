@@ -5,6 +5,11 @@ Hair Color palettes are adapted from the same creator's hair color menu and `hai
 Source: `templates/color-menus/haircol-menu.html` and `scripts/colorDicts.min.js` (`hairDict`).
 License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0): https://creativecommons.org/licenses/by-nc-sa/4.0/
 
+Masculine body base and face-shape layers are adapted from Stardew Valley Character Creator (Masc version) by Jaz (Jazzybee) and Poltergeister.
+Source: https://jazzybee.itch.io/sdv-creator-masc (`base.png` and `face shapes/face 1.png` through `face shapes/face 10.png`).
+The 10 face-shape layers are composited with the base to provide 11 body shapes. Matching skin-color layers are generated from the masculine skin palettes already used by this project.
+License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0): https://creativecommons.org/licenses/by-nc-sa/4.0/
+
 Brow image layers are from the same creator and source:
 Source files: brow/0.png and brow/brow 1.png through brow/brow 8.png.
 Nose image layers are from the same creator and source:

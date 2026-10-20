@@ -23,6 +23,8 @@ from main_menu import render_main_menu
 MENTION_PATTERN = re.compile(r"<@!?\d+>")
 BODY_DIR = Path(__file__).parent / "assets" / "bodies"
 SKIN_DIR = Path(__file__).parent / "assets" / "skincolors"
+MASCULINE_BODY_DIR = Path(__file__).parent / "assets" / "masculine" / "bodies"
+MASCULINE_SKIN_DIR = Path(__file__).parent / "assets" / "masculine" / "skincolors"
 EYES_DIR = Path(__file__).parent / "assets" / "eyes"
 BROWS_DIR = Path(__file__).parent / "assets" / "brows"
 NOSES_DIR = Path(__file__).parent / "assets" / "noses"
@@ -37,6 +39,7 @@ FARMS_DIR = Path(__file__).parent / "assets" / "farms"
 ROOM_IMAGE = Path(__file__).parent / "room_edits" / "image.png"
 BED_IMAGE = Path(__file__).parent / "room_edits" / "image copy.png"
 SAD_LEWIS = Path(__file__).parent / "Characters" / "Lewis" / "sad_lewis.png"
+SASSY_LEWIS = Path(__file__).parent / "Characters" / "Lewis" / "Sassy_lewis.png"
 ROOM_FLOOR_BOUNDS = (32, 202, 555, 558)
 BED_RENDER_SIZE = (100, 150)
 BED_MOVE_STEP = 8
@@ -92,6 +95,14 @@ FARM_SCENE_IMAGES = {
     "Beach Farm": Path(__file__).parent / "Farm_maps" / "Beach_farm.png",
     "Meadowlands Farm": Path(__file__).parent / "Farm_maps" / "Meadowlands_farm.png",
 }
+FARM_FOLLOWUP_DIALOGUE = (
+    ("It's a bit of a mess after your grandpa died.", SAD_LEWIS),
+    ("It's not been looked after for quite some time.", SASSY_LEWIS),
+    (
+        "but i have faith in you that you will make it even better as it was.",
+        HAPPY_LEWIS,
+    ),
+)
 FARM_INFO = {
     "Standard Farm": (
         "10% bonus on farming. Holding animals here is easy. "
@@ -338,7 +349,14 @@ def render_eye_preview(
     if skin_match is None:
         raise ValueError(f"Unexpected skin asset name: {skin_path.name}")
     eye_reference = Image.open(BODY_DIR / f"{eye_match.group(1)}.png").convert("RGBA")
-    skin_reference = Image.open(BODY_DIR / f"{skin_match.group(1)}.png").convert("RGBA")
+    skin_reference_dir = (
+        MASCULINE_BODY_DIR
+        if skin_path.parent == MASCULINE_SKIN_DIR
+        else BODY_DIR
+    )
+    skin_reference = Image.open(
+        skin_reference_dir / f"{skin_match.group(1)}.png"
+    ).convert("RGBA")
     if skin.size != eyes.size or eyes.size != eye_reference.size or skin.size != skin_reference.size:
         raise ValueError("Skin, eye, and reference images must have the same dimensions.")
 
@@ -583,22 +601,34 @@ def natural_key(path: Path) -> list:
     return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", path.name.lower())]
 
 
-def load_body_images() -> list[Path]:
-    if not BODY_DIR.is_dir():
+def load_body_images(gender: str = "feminine") -> list[Path]:
+    if gender == "masculine":
+        body_dir = MASCULINE_BODY_DIR
+    elif gender == "feminine":
+        body_dir = BODY_DIR
+    else:
+        raise ValueError(f"Unsupported character body type: {gender}")
+    if not body_dir.is_dir():
         return []
     return sorted(
-        (p for p in BODY_DIR.iterdir() if p.suffix.lower() in IMAGE_SUFFIXES),
+        (p for p in body_dir.iterdir() if p.suffix.lower() in IMAGE_SUFFIXES),
         key=natural_key,
     )
 
 
-def load_skin_images(face_name: str) -> list[Path]:
-    if not SKIN_DIR.is_dir():
+def load_skin_images(face_name: str, gender: str = "feminine") -> list[Path]:
+    if gender == "masculine":
+        skin_dir = MASCULINE_SKIN_DIR
+    elif gender == "feminine":
+        skin_dir = SKIN_DIR
+    else:
+        raise ValueError(f"Unsupported character body type: {gender}")
+    if not skin_dir.is_dir():
         return []
     return sorted(
         (
             p
-            for p in SKIN_DIR.iterdir()
+            for p in skin_dir.iterdir()
             if re.fullmatch(
                 rf"{re.escape(face_name)}\.skincolor\d+", p.stem, re.IGNORECASE
             )
@@ -688,11 +718,16 @@ def load_mark_images() -> list[Path]:
 
 class BodyView(discord.ui.View):
     def __init__(
-        self, owner_id: int, images: list[Path], character_name: str = ""
+        self,
+        owner_id: int,
+        images: list[Path],
+        character_name: str = "",
+        gender: str = "feminine",
     ) -> None:
         super().__init__(timeout=600)
         self.owner_id = owner_id
         self.character_name = character_name
+        self.gender = gender
         self.images = images
         self.index = 0
         self.step_images: dict[str, list[Path]] = {"shape": images}
@@ -733,10 +768,11 @@ class BodyView(discord.ui.View):
 
     @classmethod
     def restore(cls, owner_id: int, saved: dict) -> "BodyView | None":
-        shape_images = load_body_images()
+        gender = saved.get("gender", "feminine")
+        shape_images = load_body_images(gender)
         if not shape_images:
             return None
-        view = cls(owner_id, shape_images)
+        view = cls(owner_id, shape_images, gender=gender)
         view.character_name = saved.get("character_name", "")
         view.selected_face = saved.get("selected_face")
         view.eye_color_id = int(saved.get("eye_color_id", 1))
@@ -747,7 +783,9 @@ class BodyView(discord.ui.View):
         )
 
         loaders = {
-            "skin": lambda: load_skin_images(view.selected_face or ""),
+            "skin": lambda: load_skin_images(
+                view.selected_face or "", view.gender
+            ),
             "eyes": load_eye_images,
             "brows": load_brow_images,
             "nose": load_nose_images,
@@ -862,6 +900,7 @@ class BodyView(discord.ui.View):
                 "season": saved_progress.get("season", "Spring"),
                 "year": int(saved_progress.get("year", 1)),
                 "selected_face": self.selected_face,
+                "gender": self.gender,
                 "step_indices": self.step_indices,
                 "steps": list(self.step_images),
                 "eye_color_id": self.eye_color_id,
@@ -1165,7 +1204,7 @@ class BodyView(discord.ui.View):
         face_name = self.images[self.index].stem
         shape_changed = self.selected_face != face_name
         self.selected_face = face_name
-        skin_images = load_skin_images(face_name)
+        skin_images = load_skin_images(face_name, self.gender)
         if not skin_images:
             await interaction.response.send_message(
                 f"No skin color images for face {face_name} yet.", ephemeral=True
@@ -1776,7 +1815,7 @@ class JourneyResponseView(discord.ui.View):
         await interaction.response.edit_message(
             content=None,
             attachments=[discord.File(scene, filename="scene.png")],
-            view=JourneyLewisReplyView(
+            view=JourneyPlayerResponseView(
                 self.owner_id, lewis_reply, lewis_expression
             ),
         )
@@ -1821,6 +1860,41 @@ class JourneyResponseView(discord.ui.View):
             "Oh, I'm sorry to hear. We should get started.",
             "sad",
         )
+
+
+class JourneyPlayerResponseView(discord.ui.View):
+    def __init__(self, owner_id: int, reply: str, expression: str) -> None:
+        super().__init__(timeout=600)
+        self.owner_id = owner_id
+        self.reply = reply
+        self.expression = expression
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This arrival scene belongs to someone else.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Continue", style=discord.ButtonStyle.success)
+    async def continue_player_response(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        lewis_image = {
+            "normal": NORMAL_LEWIS,
+            "happy": HAPPY_LEWIS,
+            "sad": SAD_LEWIS,
+        }[self.expression]
+        scene = dialogue_scene(self.reply, lewis_image=lewis_image)
+        await interaction.response.edit_message(
+            content=None,
+            attachments=[discord.File(scene, filename="scene.png")],
+            view=JourneyLewisReplyView(
+                self.owner_id, self.reply, self.expression
+            ),
+        )
+        self.stop()
 
 
 class JourneyLewisReplyView(discord.ui.View):
@@ -1883,16 +1957,17 @@ class JourneyLewisReplyView(discord.ui.View):
         await interaction.message.edit(
             content=None,
             attachments=[discord.File(announcement, filename="scene.png")],
-            view=FarmAnnouncementContinueView(self.owner_id, pending_farm),
+            view=FarmDialogueContinueView(self.owner_id, pending_farm),
         )
         self.stop()
 
 
-class FarmAnnouncementContinueView(discord.ui.View):
-    def __init__(self, owner_id: int, farm_name: str) -> None:
+class FarmDialogueContinueView(discord.ui.View):
+    def __init__(self, owner_id: int, farm_name: str, step: int = 0) -> None:
         super().__init__(timeout=600)
         self.owner_id = owner_id
         self.farm_name = farm_name
+        self.step = step
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.owner_id:
@@ -1903,7 +1978,7 @@ class FarmAnnouncementContinueView(discord.ui.View):
         return True
 
     @discord.ui.button(label="Continue", style=discord.ButtonStyle.success)
-    async def continue_announcement(
+    async def continue_dialogue(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         farm_image_path = FARM_SCENE_IMAGES.get(self.farm_name)
@@ -1914,17 +1989,22 @@ class FarmAnnouncementContinueView(discord.ui.View):
             self.stop()
             return
 
+        text, lewis_image = FARM_FOLLOWUP_DIALOGUE[self.step]
         with Image.open(farm_image_path) as source:
             farm_image = source.convert("RGB")
         dialogue = dialogue_scene(
-            "It's a bit of a mess after your grandpa died.",
-            lewis_image=SAD_LEWIS,
-            background_image=farm_image,
+            text, lewis_image=lewis_image, background_image=farm_image
+        )
+        next_step = self.step + 1
+        next_view = (
+            FarmDialogueContinueView(self.owner_id, self.farm_name, next_step)
+            if next_step < len(FARM_FOLLOWUP_DIALOGUE)
+            else None
         )
         await interaction.response.edit_message(
             content=None,
             attachments=[discord.File(dialogue, filename="scene.png")],
-            view=None,
+            view=next_view,
         )
         self.stop()
 
@@ -2177,14 +2257,25 @@ async def begin_portrait_creation(
     if saved_progress and saved_progress.get("steps"):
         view = BodyView.restore(owner_id, saved_progress)
     else:
-        images = load_body_images()
+        gender = (saved_progress or {}).get("gender", "feminine")
+        images = load_body_images(gender)
         view = BodyView(
             owner_id,
             images,
             (saved_progress or {}).get("character_name", ""),
+            gender,
         ) if images else None
     if view is None:
-        await message.edit(content="No body images found in assets/bodies.", view=None)
+        gender = (saved_progress or {}).get("gender", "feminine")
+        body_dir = (
+            MASCULINE_BODY_DIR
+            if gender == "masculine"
+            else BODY_DIR
+        )
+        await message.edit(
+            content=f"No body images found in {body_dir.relative_to(Path(__file__).parent)}.",
+            view=None,
+        )
         return
     view.message = await message.edit(
         content=None, attachments=[view.current()], view=view
@@ -2593,13 +2684,10 @@ class ConfirmNewGameView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         delete_character_save(self.owner_id)
-        await interaction.response.send_modal(
-            CharacterNameModal(self.owner_id, interaction.message)
-        )
-        await interaction.message.edit(
-            content="Choose a name for your character in the pop-up.",
+        await interaction.response.edit_message(
+            content="Choose your character's body type.",
             attachments=[],
-            view=None,
+            view=GenderSelectionView(self.owner_id),
         )
         self.stop()
 
@@ -2614,6 +2702,47 @@ class ConfirmNewGameView(discord.ui.View):
             view=menu,
         )
         self.stop()
+
+
+class GenderSelectionView(discord.ui.View):
+    def __init__(self, owner_id: int) -> None:
+        super().__init__(timeout=180)
+        self.owner_id = owner_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                "This character setup belongs to someone else.", ephemeral=True
+            )
+            return False
+        return True
+
+    async def choose_gender(
+        self, interaction: discord.Interaction, gender: str
+    ) -> None:
+        saved = read_progress(self.owner_id) or {}
+        write_progress(self.owner_id, {**saved, "gender": gender})
+        await interaction.response.send_modal(
+            CharacterNameModal(self.owner_id, interaction.message)
+        )
+        await interaction.message.edit(
+            content="Choose a name for your character in the pop-up.",
+            attachments=[],
+            view=None,
+        )
+        self.stop()
+
+    @discord.ui.button(label="Feminine", style=discord.ButtonStyle.primary)
+    async def feminine(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await self.choose_gender(interaction, "feminine")
+
+    @discord.ui.button(label="Masculine", style=discord.ButtonStyle.primary)
+    async def masculine(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await self.choose_gender(interaction, "masculine")
 
 
 class SetCharacterNameView(discord.ui.View):
@@ -2667,7 +2796,12 @@ class FarmBot(discord.Client):
                 / f"{message.author.id}.png"
             )
             if not portrait_path.is_file():
-                portrait_path = BODY_DIR / "1.png"
+                body_dir = (
+                    MASCULINE_BODY_DIR
+                    if saved.get("gender") == "masculine"
+                    else BODY_DIR
+                )
+                portrait_path = body_dir / "1.png"
             view = InventoryTestView(
                 message.author.id,
                 saved.get("character_name") or message.author.display_name,
